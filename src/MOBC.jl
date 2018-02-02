@@ -1,5 +1,3 @@
 module MOBC
-
-# package code goes here
-
+using vOptGeneric
 end # module

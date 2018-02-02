@@ -1,0 +1,4 @@
+JuMP 0.18
+GLPK
+GLPKMathProgInterface
+vOptGeneric

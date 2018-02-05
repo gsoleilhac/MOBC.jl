@@ -6,6 +6,7 @@ using JuMP, vOptGeneric
 mutable struct Node
 	m::JuMP.Model
 	status::NODE_STATUS
+	isinteger::Bool
 	z::Float64
 	x::Vector{Float64}
 	f0::Vector{Int}
@@ -32,6 +33,7 @@ end
 
 isonlybinary(m, obj) = all(m.colCat[map(x->getfield(x, :col), obj.aff.vars)] .== :Bin)
 hasinteger(m, obj) = any(m.colCat[map(x->getfield(x, :col), obj.aff.vars)] .== :Int)
+isinteger(x, ind_INT) = all(x->x==1.||x==0., x[ind_INT])
 
 function solve_BC(vm)
 	vd = getvOptData(vm)
@@ -50,8 +52,8 @@ function solve_BC(vm)
 
 
 	z1, z2 = vd.objs
-	X = find(x->x==:Bin, vm.colCat)
-	Y = find(x->x==:Cont, vm.colCat)
+	ind_INT = find(x->x==:Bin, vm.colCat)
+	ind_CONT = find(x->x==:Cont, vm.colCat)
 
 	vm_lex = copy(vm)
 	status = solve(vm_lex, method=:lex)
@@ -63,7 +65,6 @@ function solve_BC(vm)
 	
 	JuMP.setobjective(vm, :Min, z.aff)
 
-	res = solve(vm, ignore_solve_hook=true, relaxation=true)
 	res = solve(vm, ignore_solve_hook=true, relaxation=true)
 
 	zlp = getobjectivevalue(vm)

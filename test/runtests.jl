@@ -1,4 +1,3 @@
-Pkg.checkout("vOptGeneric")
 using MOBC, vOptGeneric, GLPKMathProgInterface
 using Base.Test
 

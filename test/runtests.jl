@@ -16,7 +16,10 @@ c = 900
 
 n = MOBC.solve_BC(m)
 
-
-
 solve(m, method=:epsilon)
 YN=getY_N(m)
+
+
+xe_bc = unique(n.LN.xe)
+@test length(xe_bc) == length(YN)
+@test all([getvalue(x, i) == xe_bc[i][1:17] for i=1:length(xe_bc)])

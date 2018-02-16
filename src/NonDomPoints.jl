@@ -25,11 +25,7 @@ end
 
 nadirs(p) = p.nadirs
 worst_nadir(p) = p.worst_nadir
-
-#Check against all local nadirs, ideally : should just check against the worst
-function isfathomable(x, p::NonDomPoints)
-	x >= sum(p.worst_nadir)
-end
+isfathomable(x, p::NonDomPoints) = x >= sum(p.worst_nadir)
 
 function isdominated(z1, z2, p)
 	for (v1, v2) in p.yn

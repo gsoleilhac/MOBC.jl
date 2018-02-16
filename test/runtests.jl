@@ -1,4 +1,4 @@
-using MOBC, vOptGeneric, GLPKMathProgInterface
+using MOBC, vOptGeneric, GLPKMathProgInterface, PyPlot
 using Base.Test
 
 m = vModel(solver = GLPKSolverMIP())
@@ -14,12 +14,10 @@ c = 900
 @addobjective(m, Max, dot(x, p2) + dot(y, p2cont))
 @constraint(m, dot(x, w) + dot(y, wcont)<= c)
 
-n = MOBC.solve_BC(m)
+YN, XE = MOBC.solve_BC(m, 5000)
 
-solve(m, method=:epsilon)
-YN=getY_N(m)
+solve(m, method=:dichotomy)
+voptYN=getY_N(m)
 
-
-xe_bc = unique(n.LN.xe)
-@test length(xe_bc) == length(YN)
-@test all([getvalue(x, i) == xe_bc[i][1:17] for i=1:length(xe_bc)])
+plot(map(x->x[1], voptYN), map(x->x[2], voptYN), "bo", markersize="3")
+plot(map(x->x[1], YN), map(x->x[2], YN), "rx", markersize="3")

@@ -4,7 +4,7 @@ mutable struct Node
 	x::Vector{Float64}
 	zparent::Float64
 end
-Node(m) = Node(m, NaN, [], Inf)
+Node(m) = Node(copy(m), NaN, [], Inf)
 Base.copy(n::Node) = Node(copy(n.m), NaN, [], n.z)
 
 Base.show(io::IO, n::Node) = begin

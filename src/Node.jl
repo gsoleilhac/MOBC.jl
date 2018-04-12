@@ -3,9 +3,10 @@ mutable struct Node
 	z::Float64
 	x::Vector{Float64}
 	zparent::Float64
+	nbcover::Int
 end
-Node(m) = Node(copy(m), NaN, [], Inf)
-Base.copy(n::Node) = Node(copy(n.m), NaN, [], n.z)
+Node(m) = Node(copy(m), NaN, [], Inf, 0)
+Base.copy(n::Node) = Node(copy(n.m), NaN, [], n.z, n.nbcover-1)
 
 Base.show(io::IO, n::Node) = begin
 	print(io, "Node(")

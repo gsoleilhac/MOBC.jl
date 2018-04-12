@@ -11,9 +11,9 @@ mutable struct NonDomPoints{T}
 	worst_nadir::Tuple{Int,Int}
 	function NonDomPoints(t::Type{T}, xe, yn) where T<:Sense
 		@assert issorted(yn, by = y-> y[1])
-		λ = Int(yn[1][2] - yn[end][2]), Int(yn[end][1] - yn[1][1])
+		λ = round(Int, yn[1][2] - yn[end][2]), round(Int, yn[end][1] - yn[1][1])
 		λ = λ[1]÷gcd(λ[1], λ[2]), λ[2]÷gcd(λ[1], λ[2])
-		res = new{T}(xe, yn, λ, [])
+		res = new{T}(xe, [round.(Int, x) for x in yn], λ, [])
 		update_ln!(res)
 		res
 	end
@@ -43,8 +43,8 @@ end
 
 nadirs(p::NonDomPoints) = p.nadirs
 worst_nadir(p::NonDomPoints) = p.worst_nadir
-isfathomable(z, p::NonDomPoints{Min}) = z >= sum(worst_nadir(p).*p.λ)
-isfathomable(z, p::NonDomPoints{Max}) = z <= sum(worst_nadir(p).*p.λ)
+isfathomable(z, p::NonDomPoints{Min}) = z > sum(worst_nadir(p).*p.λ)
+isfathomable(z, p::NonDomPoints{Max}) = z < sum(worst_nadir(p).*p.λ)
 
 function isdominated(z1, z2, p::NonDomPoints{Min})
 	for (v1, v2) in p.yn
@@ -67,7 +67,7 @@ end
 Base.length(p::NonDomPoints) = length(p.yn)
 
 function Base.push!(p::NonDomPoints{S}, x, y) where S<:Sense
-	@assert !isdominated(y..., p)
+	@assert !isdominated(y..., p) "y : $y \n p : $p"
 	ind = searchsortedfirst(p.yn, y, by = y -> first(y))
 	insert!(p.xe, ind, x)
 	insert!(p.yn, ind, y)

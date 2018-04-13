@@ -107,7 +107,7 @@ function solve_BC(vm, limit=500)
 		if sense == Max
 			@constraint(m, Ƶ1.aff >= LN.yn[1][1] + 1)
 			@constraint(m, Ƶ2.aff >= LN.yn[end][2] + 1)
-			@constraint(m, Ƶ.aff <= LN.λ[1]*LN.yn[1][1] + LN.λ[2]*LN.yn[1][2])
+			# @constraint(m, Ƶ.aff <= LN.λ[1]*LN.yn[1][1] + LN.λ[2]*LN.yn[1][2])
 		else
 			@constraint(m, Ƶ1.aff <= LN.yn[end][1] - 1)
 			@constraint(m, Ƶ2.aff <= LN.yn[1][2] - 1)

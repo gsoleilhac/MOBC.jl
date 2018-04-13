@@ -46,6 +46,7 @@ function separateHeur(x, a, b)
             ECI = extend(C, a)
             if isviolated(ECI, x, length(C)-1)
                 # @show C, sortperm((1 .- x)./ a)
+                # @show C, ECI
                 return (ECI, length(C)-1)
             else
                 kstar = argmax(a[C])
@@ -58,14 +59,23 @@ function separateHeur(x, a, b)
 end
 
 function find_cover_cuts(n, cstrData)
-    # @show length(n.m.linconstr)
     cuts = Tuple{Vector{Int}, Int}[]
     for i = 1:cstrData.nb_cstr
         if cstrData.ub[i] > 0 && cstrData.lb[i] == -Inf && cstrData.ub[i] != Inf
-            C, card = separateHeur(view(n.m.colVal, cstrData.indices[i]), cstrData.coeffs[i], cstrData.ub[i])
+            inds = setdiff(cstrData.indices[i], union(n.f0, n.f1))
+            x = view(n.m.colVal, inds)    
+            a = cstrData.coeffs[i][in.(cstrData.indices[i], (inds,))]
+            b = cstrData.ub[i]
+            if !isempty(n.f1)
+                index = indexin(collect(n.f1), cstrData.indices[i])
+                deleteat!(index, find(x->x==0, index))
+                b -= sum(cstrData.coeffs[i][index])
+            end
+            C, card = separateHeur(x, a, b)
             if !isempty(C)
-                @assert isviolated(C, view(n.m.colVal, cstrData.indices[i]), card)
-                push!(cuts, (cstrData.indices[i][C], card))
+                @assert isviolated(inds[C], n.m.colVal, card)
+                @assert isempty(intersect(inds[C], union(n.f0, n.f1))) "C : $C, f0 : $(n.f0), f1 : $(n.f1)"
+                push!(cuts, (inds[C], card))
             end
         end
     end

@@ -100,7 +100,6 @@ function solve_BC(vm, limit=500)
 				push!(LN, LN_NSGA.xe[j], LN_NSGA.yn[j])
 			end
 		end
-		@show LN.yn
 
 		Ƶ1, Ƶ2 = copy(z1, m), copy(z2, m)
 		Ƶ = LN.λ[1]*Ƶ1 + LN.λ[2]*Ƶ2
@@ -122,7 +121,7 @@ function solve_BC(vm, limit=500)
 		cpt = 0
 		while !isempty(S) && cpt < limit
 			sort!(S, by = x->x.zparent, rev=true)
-			@suppress process_node(S, sense, LN, Ƶ1, Ƶ2, LNGlobal, cstrData)
+			process_node(S, sense, LN, Ƶ1, Ƶ2, LNGlobal, cstrData)
 			nbNodesTotal += 1
 			cpt += 1
 		end
@@ -160,7 +159,7 @@ function process_node(S::AbstractVector{Node}, sense, LN, obj1, obj2, LNGlobal, 
 		# @show n.z
 		# @show sum(worst_nadir(LN).*LN.λ)
 		# @show worst_nadir(LN)
-		# plot_int_found(LN, LNGlobal, z1, z2, marker="k.", sleeptime=20)
+		# plot_int_found(LN, LNGlobal, z1, z2, marker="k.", sleeptime=0.01)
 		return
 	end
 	
@@ -185,7 +184,7 @@ function process_node(S::AbstractVector{Node}, sense, LN, obj1, obj2, LNGlobal, 
 		else
 			# println("not binary, not dominated : basic branch")
 			# plot_int_found(LN, LNGlobal, z1, z2, sleeptime=0.01, marker="k.")
-			if n.nbcover < 10 && find_cover_cuts(n, cstrData)
+			if n.nbcover <= 10 && find_cover_cuts(n, cstrData)
 				n.nbcover += 1
 				push!(S, n)
 			else
@@ -200,12 +199,11 @@ end
 
 
 function integerbranch(n)
-
 	newnode = copy(n)
 	inds0 = find(x->x==0., n.x)
 	inds1 = find(x->x==1., n.x)
 	#NO-GOOD CSTR
-	@constraint(newnode.m, sum(JuMP.Variable(newnode.m, j) for j in inds0) + sum(1 - JuMP.Variable(newnode.m, j) for j in inds1) >= 1)
+	@constraint(newnode.m, sum(JuMP.Variable(newnode.m, j) for j in inds0) + sum(1. - JuMP.Variable(newnode.m, j) for j in inds1) >= 1.)
 	return newnode
 end
 
@@ -227,19 +225,19 @@ function paretobranch(sense::Type{Min}, n, z1, z2, LN, obj1, obj2)
 		right += 1
 	end
 
-	boundz1 = left > 0 ? nadirs(LN)[left][1] : NaN
-	boundz2 = right < length(LN) ? nadirs(LN)[right][2] : NaN
+	boundz1 = left > 0 ? nadirs(LN)[left][1] - 1. : NaN
+	boundz2 = right < length(LN) ? nadirs(LN)[right][2] - 1. : NaN
 
 	res = Node[]
 
 	if !isnan(boundz1)
 		n1 = copy(n)
-		@constraint(n1.m, copy(obj1, n1.m).aff <= boundz1 - 1)
+		@constraint(n1.m, copy(obj1, n1.m).aff <= boundz1)
 		push!(res, n1)
 	end
 	if !isnan(boundz2)
 		n2 = copy(n)
-		@constraint(n2.m, copy(obj2, n2.m).aff <= boundz2 - 1)
+		@constraint(n2.m, copy(obj2, n2.m).aff <= boundz2)
 		push!(res, n2)
 	end
 	@assert length(res) >= 1
@@ -262,19 +260,19 @@ function paretobranch(sense::Type{Max}, n, z1, z2, LN, obj1, obj2)
 		right += 1
 	end
 
-	boundz1 = right < length(LN) ? nadirs(LN)[right][1] : NaN
-	boundz2 = left > 0 ? nadirs(LN)[left][2] : NaN
+	boundz1 = right < length(LN) ? nadirs(LN)[right][1] + 1. : NaN
+	boundz2 = left > 0 ? nadirs(LN)[left][2] + 1. : NaN
 
 	res = Node[]
 
 	if !isnan(boundz1)
 		n1 = copy(n)
-		@constraint(n1.m, copy(obj1, n1.m).aff >= boundz1 + 1)
+		@constraint(n1.m, copy(obj1, n1.m).aff >= boundz1)
 		push!(res, n1)
 	end
 	if !isnan(boundz2)
 		n2 = copy(n)
-		@constraint(n2.m, copy(obj2, n2.m).aff >= boundz2 + 1)
+		@constraint(n2.m, copy(obj2, n2.m).aff >= boundz2)
 		push!(res, n2)
 	end
 	# plot_pareto_branch(LN, z1, z2, boundz1, boundz2, sleeptime=0.01)
@@ -286,8 +284,8 @@ end
 function basicbranch(n)
 	i = findfirst(x -> !isinteger(x), n.x)
 	n1, n2 = copy(n), copy(n)
-	setlowerbound(JuMP.Variable(n1.m, i), 1.)
-	setupperbound(JuMP.Variable(n2.m, i), 0.)
+	setlowerbound(JuMP.Variable(n1.m, i), 1.) ; push!(n1.f1, i)
+	setupperbound(JuMP.Variable(n2.m, i), 0.) ; push!(n2.f0, i)
 	n1, n2
 end
 

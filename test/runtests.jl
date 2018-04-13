@@ -87,7 +87,7 @@ function benchmark(itemrange, nrange, runpersize)
 			m = random_instance(itemrange, n)
 			print(m)
 			global m_problem = m
-			valBC, tBC, _ = @timed @suppress solve_BC(m, Inf);
+			valBC, tBC, _ = @timed solve_BC(m, Inf);
 			@suppress valEPS,tEPS,_ = @timed solve(m, method=:epsilon);
 			if length(unique(cast_to_int_and_filter(getY_N(m), :Max))) != length(unique(valBC.YN))
 				@suppress solve(m, method=:epsilon);		

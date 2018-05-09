@@ -24,7 +24,7 @@ function evaluate(x, cst, coeffs, vars)::Float64
 	res
 end
 
-function solve_BC(vm, limit=500 ;  showplot = false, docovercuts = true)
+function solve_BC(vm, limit=500 ;  showplot = false, docovercuts = true ; global_nsga = true)
 
 	#Asserts
 	vd = getvOptData(vm)
@@ -69,16 +69,19 @@ function solve_BC(vm, limit=500 ;  showplot = false, docovercuts = true)
 	modelnsga = copy(vm)
 	modelnsga.ext[:vOpt].objs = [z1, z2]
 
-	# 1 nsga per triangle
-	#ns = union((nsga(100, 200, modelnsga, seed=[XE_convex[i], XE_convex[i+1]], pmut=0.3, showprogress=false) for i = 1:length(XE_convex)-1)...)
-	
-	# or 1 global nsga
-	ns = nsga(100, 2000, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
+	if global_nsga
+		# 1 global nsga
+		ns = nsga(100, 1000, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
+	else
+		# 1 nsga per triangle
+		ns = union((nsga(100, 200, modelnsga, seed=[XE_convex[i], XE_convex[i+1]], pmut=0.3, showprogress=false) for i = 1:length(XE_convex)-1)...)
+		#if we do one nsga per triangle, we can have dominated solutions here.
+		NSGAII.fast_non_dominated_sort!(ns, sense==Max ? NSGAII.Max() : NSGAII.Min()) ; filter!(x->x.rank == 1, ns) 
+	end
 	
 	ns = unique(x->x.y, ns)
 	
-	#if we do one nsga per triangle, we can have dominated solutions here.
-	#NSGAII.fast_non_dominated_sort!(ns, sense==Max ? NSGAII.Max() : NSGAII.Min()) ; filter!(x->x.rank == 1, ns) 
+	
 	sort!(ns, by=x->x.y[1])
 	LN_NSGA = NonDomPoints(sense, map(x->x.pheno, ns), map(x->Tuple(x.y), ns))
 

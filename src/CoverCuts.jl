@@ -66,16 +66,18 @@ function find_cover_cuts(n, cstrData)
             x = view(n.m.colVal, inds)    
             a = cstrData.coeffs[i][in.(cstrData.indices[i], (inds,))]
             b = cstrData.ub[i]
-            if !isempty(n.f1)
-                index = indexin(collect(n.f1), cstrData.indices[i])
-                deleteat!(index, find(x->x==0, index))
-                b -= sum(cstrData.coeffs[i][index])
-            end
-            C, card = separateHeur(x, a, b)
-            if !isempty(C)
-                @assert isviolated(inds[C], n.m.colVal, card)
-                @assert isempty(intersect(inds[C], union(n.f0, n.f1))) "C : $C, f0 : $(n.f0), f1 : $(n.f1)"
-                push!(cuts, (inds[C], card))
+            if dot(x, a) ≈ b
+                if !isempty(n.f1)
+                    index = indexin(collect(n.f1), cstrData.indices[i])
+                    deleteat!(index, find(x->x==0, index))
+                    b -= sum(cstrData.coeffs[i][index])
+                end
+                C, card = separateHeur(x, a, b)
+                if !isempty(C)
+                    @assert isviolated(inds[C], n.m.colVal, card)
+                    @assert isempty(intersect(inds[C], union(n.f0, n.f1))) "C : $C, f0 : $(n.f0), f1 : $(n.f1)"
+                    push!(cuts, (inds[C], card))
+                end
             end
         end
     end

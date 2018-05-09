@@ -24,12 +24,12 @@ function evaluate(x, cst, coeffs, vars)::Float64
 	res
 end
 
-function solve_BC(vm, limit=500)
+function solve_BC(vm, limit=500 ;  showplot = false, docovercuts = true)
 
 	#Asserts
 	vd = getvOptData(vm)
 	@assert length(vd.objs) == 2
-	@assert isonlybinary(vm, vd.objs[1]) && isonlybinary(vm, vd.objs[2])
+	@assert all(isonlybinary.(vm, vd.objs))
 
 	@assert vd.objSenses[1] == vd.objSenses[2]
 	sense = vd.objSenses[1] == :Max ? Max : Min
@@ -40,7 +40,7 @@ function solve_BC(vm, limit=500)
 	z1, z2 = vd.objs
 	
 	#Calculate the convex relaxation
-	@suppress status = solve(vm, method=:dicho)
+	status = solve(vm, method=:dicho)
 	status == :Optimal || return status
 
 	YN_convex = map(x->round.(Int, x), getY_N(vm))
@@ -70,13 +70,15 @@ function solve_BC(vm, limit=500)
 	modelnsga.ext[:vOpt].objs = [z1, z2]
 
 	# 1 nsga per triangle
-	ns = union((nsga(100, 200, modelnsga, seed=[XE_convex[i], XE_convex[i+1]], pmut=0.3, showprogress=false) for i = 1:length(XE_convex)-1)...)
+	#ns = union((nsga(100, 200, modelnsga, seed=[XE_convex[i], XE_convex[i+1]], pmut=0.3, showprogress=false) for i = 1:length(XE_convex)-1)...)
 	
 	# or 1 global nsga
-	# ns = nsga(100, 2000, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
+	ns = nsga(100, 2000, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
 	
 	ns = unique(x->x.y, ns)
-	NSGAII.fast_non_dominated_sort!(ns, NSGAII.Max()) ; filter!(x->x.rank == 1, ns) #if we do one nsga per triangle, we can have dominated solutions here.
+	
+	#if we do one nsga per triangle, we can have dominated solutions here.
+	#NSGAII.fast_non_dominated_sort!(ns, sense==Max ? NSGAII.Max() : NSGAII.Min()) ; filter!(x->x.rank == 1, ns) 
 	sort!(ns, by=x->x.y[1])
 	LN_NSGA = NonDomPoints(sense, map(x->x.pheno, ns), map(x->Tuple(x.y), ns))
 
@@ -86,17 +88,21 @@ function solve_BC(vm, limit=500)
 
 	nbNodesTotal = 0
 
-	@show length.((YN_convex, XE_convex))
-
 	# @showprogress 0.1 
 	for i = 1:length(YN_convex)-1
 
 		m = copy(vm)
 		LNGlobal = LN_NSGA #for plots
 		LN = NonDomPoints(sense, [XE_convex[i], XE_convex[i+1]], [Tuple(YN_convex[i]), Tuple(YN_convex[i+1])])
+		
+		if abs(LN.yn[1][1]-LN.yn[end][1]) == 1 || abs(LN.yn[1][2]-LN.yn[end][2]) == 1
+			append!(resxe, LN.xe)
+			append!(resyn, LN.yn)
+			continue
+		end
 
 		for j = 1:length(LN_NSGA.yn)
-			if LN_NSGA.yn[j][1] > LN.yn[1][1] && LN_NSGA.yn[j][2] > LN.yn[end][2]
+			if LN.yn[1][1] < LN_NSGA.yn[j][1] < LN.yn[end][1] 
 				push!(LN, LN_NSGA.xe[j], LN_NSGA.yn[j])
 			end
 		end
@@ -120,8 +126,8 @@ function solve_BC(vm, limit=500)
 		#Solve while there are nodes to process
 		cpt = 0
 		while !isempty(S) && cpt < limit
-			sort!(S, by = x->x.zparent, rev=true)
-			process_node(S, sense, LN, Ƶ1, Ƶ2, LNGlobal, cstrData)
+			# sort!(S, by = x->x.zparent, rev=true)
+			process_node(pop!(S), S, sense, LN, Ƶ1, Ƶ2, LNGlobal, cstrData, showplot, docovercuts)
 			nbNodesTotal += 1
 			cpt += 1
 		end
@@ -142,9 +148,8 @@ function solve_BC(vm, limit=500)
 end
 
 
-function process_node(S::AbstractVector{Node}, sense, LN, obj1, obj2, LNGlobal, cstrData)
+function process_node(n::Node, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts)
 
-	n = pop!(S)
 	n.zparent != Inf && isfathomable(n.zparent, LN) && return
 	res = @suppress solve(n.m, ignore_solve_hook=true, relaxation=true)
 	res != :Optimal && return
@@ -155,38 +160,37 @@ function process_node(S::AbstractVector{Node}, sense, LN, obj1, obj2, LNGlobal, 
 
 	if isfathomable(n.z, LN)
 		# println("fathomable")
-		# @show n.x
-		# @show n.z
+		# @show n.x, n.z
 		# @show sum(worst_nadir(LN).*LN.λ)
 		# @show worst_nadir(LN)
-		# plot_int_found(LN, LNGlobal, z1, z2, marker="k.", sleeptime=0.01)
+		showplot && plot_int_found(LN, LNGlobal, z1, z2, marker="k.", sleeptime=0.01)
 		return
 	end
 	
 	if isbinary(n.x)
-		if !isdominated(z1, z2, LN)
+		if isdominated(z1, z2, LN)
+			# println("int, dominated but not fathomable : paretobranch")
+			showplot && plot_int_found(LN, LNGlobal, z1, z2, marker = "kx")
+			append!(S, paretobranch(sense, n, z1, z2, LN, obj1, obj2, showplot))
+		else
 			# println("new int solution found")
 			push!(LN, n.x, (z1, z2))
 			push!(S, integerbranch(n))
-			# plot_int_found(LN, LNGlobal, z1, z2)
-		else
-			# println("int, dominated but not fathomable : paretobranch")
-			# plot_int_found(LN, LNGlobal, z1, z2, marker = "kx")
-			append!(S, paretobranch(sense, n, z1, z2, LN, obj1, obj2))
+			showplot && plot_int_found(LN, LNGlobal, z1, z2)
 		end
 	else
 		if isdominated(z1, z2, LN)
 			# println("not binary, dominated : paretobranch")
-			# plot_int_found(LN, LNGlobal, z1, z2, marker="r.")
-			for node in paretobranch(sense, n, z1, z2, LN, obj1, obj2)
+			showplot && plot_int_found(LN, LNGlobal, z1, z2, marker="r.")
+			for node in paretobranch(sense, n, z1, z2, LN, obj1, obj2, showplot)
 				push!(S, node)
 			end
 		else
 			# println("not binary, not dominated : basic branch")
-			# plot_int_found(LN, LNGlobal, z1, z2, sleeptime=0.01, marker="k.")
-			if n.nbcover <= 10 && find_cover_cuts(n, cstrData)
+			showplot && plot_int_found(LN, LNGlobal, z1, z2, sleeptime=0.01, marker="k.")
+			if docovercuts && n.nbcover <= 10 && find_cover_cuts(n, cstrData)
 				n.nbcover += 1
-				push!(S, n)
+				process_node(n, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts)
 			else
 				n1, n2 = basicbranch(n)
 				push!(S, n1)
@@ -194,7 +198,6 @@ function process_node(S::AbstractVector{Node}, sense, LN, obj1, obj2, LNGlobal, 
 			end
 		end
 	end
-
 end
 
 
@@ -208,8 +211,7 @@ function integerbranch(n)
 end
 
 
-function paretobranch(sense::Type{Min}, n, z1, z2, LN, obj1, obj2)
-	@show "paretomin"
+function paretobranch(sense::Type{Min}, n, z1, z2, LN, obj1, obj2, showplot)
 	λ = LN.λ
 	WS = sum((z1,z2).*λ)
 	i = findfirst(x -> dominates(sense, x, (z1,z2)), LN.yn)
@@ -240,11 +242,12 @@ function paretobranch(sense::Type{Min}, n, z1, z2, LN, obj1, obj2)
 		@constraint(n2.m, copy(obj2, n2.m).aff <= boundz2)
 		push!(res, n2)
 	end
-	@assert length(res) >= 1
+	showplot && plot_pareto_branch(LN, z1, z2, boundz1, boundz2, sleeptime=0.1)
+	#@assert length(res) >= 1
 	res
 end
 
-function paretobranch(sense::Type{Max}, n, z1, z2, LN, obj1, obj2)
+function paretobranch(sense::Type{Max}, n, z1, z2, LN, obj1, obj2, showplot)
 	λ = LN.λ
 	WS = sum((z1,z2).*λ)
 	i = findfirst(x -> dominates(sense, x, (z1,z2)), LN.yn)
@@ -275,8 +278,8 @@ function paretobranch(sense::Type{Max}, n, z1, z2, LN, obj1, obj2)
 		@constraint(n2.m, copy(obj2, n2.m).aff >= boundz2)
 		push!(res, n2)
 	end
-	# plot_pareto_branch(LN, z1, z2, boundz1, boundz2, sleeptime=0.01)
-	@assert length(res) >= 1
+	showplot && plot_pareto_branch(LN, z1, z2, boundz1, boundz2, sleeptime=0.01)
+	#@assert length(res) >= 1
 	res
 end
 

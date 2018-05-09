@@ -8,7 +8,7 @@ mutable struct Node
 	f1::Set{Int}
 end
 Node(m) = Node(copy(m), NaN, [], Inf, 0, Set{Int}(), Set{Int}())
-Base.copy(n::Node) = Node(copy(n.m), NaN, [], n.z, n.nbcover-1, copy(n.f0), copy(n.f1))
+Base.copy(n::Node) = Node(copy(n.m), NaN, [], n.z, n.nbcover, copy(n.f0), copy(n.f1))
 
 Base.show(io::IO, n::Node) = begin
 	print(io, "Node(")

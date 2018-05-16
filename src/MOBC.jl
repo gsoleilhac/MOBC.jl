@@ -24,7 +24,7 @@ function evaluate(x, cst, coeffs, vars)::Float64
 	res
 end
 
-function solve_BC(vm, limit=500 ;  showplot = false, docovercuts = true ; global_nsga = true)
+function solve_BC(vm, limit=500 ;  showplot = false, docovercuts = true , global_nsga = true)
 
 	#Asserts
 	vd = getvOptData(vm)

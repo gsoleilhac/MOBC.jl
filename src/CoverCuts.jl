@@ -41,7 +41,7 @@ function separateHeur(x, a, b)
     while !isempty(order)
         p = popfirst!(order)
         a[p] <= astar && push!(C, p)
-        isempty(C) && return (Set{Int}(), 0)
+        isempty(C) && return (Int[], 0)
         if isacover(C, a, b)
             ECI = extend(C, a)
             if isviolated(ECI, x, length(C)-1)
@@ -62,18 +62,22 @@ function find_cover_cuts(n, cstrData)
     cuts = Tuple{Vector{Int}, Int}[]
     for i = 1:cstrData.nb_cstr
         if cstrData.ub[i] > 0 && cstrData.lb[i] == -Inf && cstrData.ub[i] != Inf
-            inds = setdiff(cstrData.indices[i], union(n.f0, n.f1))
-            x = view(n.m.colVal, inds)    
-            a = cstrData.coeffs[i][in.(cstrData.indices[i], (inds,))]
-            b = cstrData.ub[i]
-            if dot(x, a) ≈ b
-                if !isempty(n.f1)
-                    index = indexin(collect(n.f1), cstrData.indices[i])
-                    deleteat!(index, find(x->x==0, index))
-                    b -= sum(cstrData.coeffs[i][index])
+            inds = setdiff(cstrData.indices[i], union(n.f0, n.f1)) #indices of unfixed variables involved in the constraint
+            x = view(n.m.colVal, inds) #value of those variables in the current solution
+            a = cstrData.coeffs[i][in.(cstrData.indices[i], (inds,))] #coefficients of those variables in the current constraint
+            b = cstrData.ub[i] #RHS of the constraint
+
+            # Remove the sum of coeffs of variables already fixed to 1 from the RHS
+            for j = 1:length(cstrData.indices[i])
+                if cstrData.indices[i][j] in n.f1
+                    b -= cstrData.coeffs[i][j]
                 end
-                C, card = separateHeur(x, a, b)
-                if !isempty(C)
+            end
+
+            
+            if dot(x, a) > b - 1e-4 #if the constraint is activated
+                C, card = separateHeur(x, a, b) #try to find a cover
+                if !isempty(C) #if success, add it to the list of cover cuts
                     @assert isviolated(inds[C], n.m.colVal, card)
                     @assert isempty(intersect(inds[C], union(n.f0, n.f1))) "C : $C, f0 : $(n.f0), f1 : $(n.f1)"
                     push!(cuts, (inds[C], card))
@@ -85,7 +89,7 @@ function find_cover_cuts(n, cstrData)
     # @show cuts
     for c in cuts
         vars, card = c
-        # @show vars, card
+        #@show vars, card
         @constraint(n.m, sum(JuMP.Variable(n.m, j) for j in vars) <= card)
     end
     # @show n.m.colVal

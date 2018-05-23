@@ -46,18 +46,18 @@ worst_nadir(p::NonDomPoints) = p.worst_nadir
 isfathomable(z, p::NonDomPoints{Min}) = z > sum(worst_nadir(p).*p.λ)
 isfathomable(z, p::NonDomPoints{Max}) = z < sum(worst_nadir(p).*p.λ)
 
-function isdominated(z1, z2, p::NonDomPoints{Min})
+function isweaklydominated(z1, z2, p::NonDomPoints{Min})
 	for (v1, v2) in p.yn
-		if v1 < z1 && v2 <= z2 || v1 <= z1 && v2 < z2 
+		if v1 <= z1 && v2 <= z2
 			return true
 		end
 	end
 	false
 end
 
-function isdominated(z1, z2, p::NonDomPoints{Max})
+function isweaklydominated(z1, z2, p::NonDomPoints{Max})
 	for (v1, v2) in p.yn
-		if v1 > z1 && v2 >= z2 || v1 >= z1 && v2 > z2 
+		if v1 >= z1 && v2 >= z2
 			return true
 		end
 	end
@@ -67,7 +67,8 @@ end
 Base.length(p::NonDomPoints) = length(p.yn)
 
 function Base.push!(p::NonDomPoints{S}, x, y) where S<:Sense
-	@assert !isdominated(y..., p) "y : $y \n p : $p"
+	#@assert !isweaklydominated(y..., p) "y : $y \n p : $p"
+	!isweaklydominated(y..., p) || return p
 	ind = searchsortedfirst(p.yn, y, by = y -> first(y))
 	insert!(p.xe, ind, x)
 	insert!(p.yn, ind, y)

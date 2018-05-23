@@ -74,7 +74,7 @@ function cast_to_int_and_filter(yn::Vector{Vector{Float64}}, sense=:Max)
 	yn
 end
 
-function benchmark(itemrange, nrange, runpersize)
+function benchmark(itemrange, nrange, runpersize ; args...)
 	figure(1) ; clf()
 	figure(2) ; clf()
 	res_bc=Dict{Int, Vector{Float64}}()
@@ -88,9 +88,9 @@ function benchmark(itemrange, nrange, runpersize)
 			m = random_instance(itemrange, n)
 			print(m)
 			global m_problem = m
-			valBC, tBC, _ = @timed solve_BC(m, Inf);
-			@suppress valEPS,tEPS,_ = @timed solve(m, method=:epsilon);
-			if length(unique(cast_to_int_and_filter(getY_N(m), :Max))) != length(unique(valBC.YN))
+			valBC, tBC, _ = @timed solve_BC(m, Inf ; args...);
+			status,tEPS,_ = @suppress @timed solve(m, method=:epsilon, round_results=true);
+			if length(getY_N(m)) != length(unique(valBC.YN))
 				@suppress solve(m, method=:epsilon);		
 				@show sort(valBC.YN, by = x->x[1])
 				@show getY_N(m)

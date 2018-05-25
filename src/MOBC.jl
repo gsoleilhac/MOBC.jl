@@ -4,12 +4,12 @@ using JuMP, vOptGeneric, PyPlot, NSGAII, Suppressor, NamedTuples, Nullables, Com
 export solve_stidsen, solve_parragh, parseGAP, parseGAP_orlib
 
 include("Node.jl")
-include("Plots.jl")
 include("NonDomPoints.jl")
 include("CoverCuts.jl")
 include("ParserGAP.jl")
 include("Stidsen.jl")
 include("Parragh.jl")
+include("Plots.jl")
 
 isonlybinary(m, obj) = all(m.colCat[map(x->getfield(x, :col), obj.aff.vars)] .== :Bin)
 isbinary(x) = all(y-> y==1. || y==0., x)

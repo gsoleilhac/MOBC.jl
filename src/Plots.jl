@@ -71,3 +71,12 @@ function plot_pareto_branch(LN, z1, z2, bound1, bound2 ; sleeptime = 0.01)
 	sleep(sleeptime)
 
 end
+
+
+function plotdualbound(sl::Vector{Segment})
+	for s in sl
+		plot([s.p1.x, s.p2.x, s.c.x, s.c.x, s.p1.x, s.p1.x], [s.p1.y, s.p2.y, s.p2.y, s.c.y, s.c.y, s.p1.y], "g-")
+		plot([s.p1.x, s.p2.x], [s.p1.y, s.p2.y], "kx")
+		plot([s.c.x, s.c.x], [s.c.y, s.c.y], "ks")
+	end
+end

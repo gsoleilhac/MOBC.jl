@@ -9,10 +9,63 @@ struct Segment
     p2::Point
     c::Point
     a::Float64
-    y::Float64
+    b::Float64
 end
 
-Segment(p1, p2, c) = begin warn("implement Segment(p1, p2, c)") ; Segment(p1, p2, c, 0., 0.) end
+function Segment(p1::Point, p2::Point, c::Point)
+	a = (p2.y - p1.y) / (p2.x - p1.x)
+	b = p1.y - a*p1.x
+	Segment(p1, p2, c, a, b)
+end
+Segment(p1::Point, p2::Point, s::Type{Max}) = Segment(p1, p2, Point(p1.x, p2.y))
+Segment(p1::Point, p2::Point, s::Type{Min}) = Segment(p1, p2, Point(p2.x, p1.y))
+
+function filterSegment(::Type{Min}, s::Segment, u::Point)
+	S = Segment[]
+	p1, p2, c = s.p1, s.p2, s.c
+	if u.y >= s.a * u.x + s.b || u.y >= p1.y || u.x >= p2.x
+		if u.x <= p1.x
+			push!(S, Segment(p1, p2, Point(c.x, min(c.y, u.y))))
+		elseif u.y <= p2.y
+			push!(S, Segment(p1, p2, Point(min(c.x, u.x), c.y)))
+		end
+	else
+		if u.x > p1.x
+			push!(S, Segment(p1, Point(u.x,s.a * u.x + s.b), Point(u.x,c.y)))
+		end
+		if u.y > p2.y
+			push!(S, Segment(Point((u.y - s.b) / s.a, u.y), p2,Point(c.x, u.y)))
+		end
+	end
+	return S
+end
+
+function filterLB(LB, UB)
+	S = LB
+	for u in UB
+		S_prime = Segment[]
+		for s in S
+			append!(S_prime, filterSegment(Min, s, u))
+		end
+		S = S_prime
+	end
+	return S
+end
+
+
+
+
+function toSegmentList(lb, nadir)
+	res = Segment[]
+	for i = 1:length(lb)-1
+		c = Point(i==length(lb)-1 ? nadir[1] : lb[i+1][1], nadir[2])
+		push!(res, Segment(Point(lb[i]...), Point(lb[i+1]...), c))
+	end
+	res
+end
+
+toPointList(ub) = [Point(u...) for u in ub]
+
 
 
 function solve_parragh(vm, limit=500 ;  showplot = false, docovercuts = true , global_branch = false, use_nsga = true, global_nsga = true, lift_covers = false)

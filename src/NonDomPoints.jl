@@ -4,7 +4,7 @@ struct Min<:Sense end
 
 
 mutable struct NonDomPoints{T}
-	xe::Vector{Vector{Float64}}
+	xe::Vector{Vector{Int}}
 	yn::Vector{Tuple{Int,Int}}
 	λ::Tuple{Int,Int}
 	nadirs::Vector{Tuple{Int,Int}}
@@ -13,7 +13,7 @@ mutable struct NonDomPoints{T}
 		@assert issorted(yn, by = y-> y[1])
 		λ = round(Int, yn[1][2] - yn[end][2]), round(Int, yn[end][1] - yn[1][1])
 		λ = λ[1]÷gcd(λ[1], λ[2]), λ[2]÷gcd(λ[1], λ[2])
-		res = new{T}(xe, [round.(Int, x) for x in yn], λ, [])
+		res = new{T}([round.(Int, x) for x in xe], [round.(Int, x) for x in yn], λ, [])
 		update_ln!(res)
 		res
 	end

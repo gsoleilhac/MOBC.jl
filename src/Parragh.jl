@@ -4,6 +4,9 @@ struct Point
     y::Float64
 end
 
+import Base.first ; first(p::Point) = p.x
+import Base.last ; last(p::Point) = p.y
+
 struct Segment
     p1::Point
     p2::Point
@@ -28,6 +31,8 @@ function filterSegment(::Type{Min}, s::Segment, u::Point)
 			push!(S, Segment(p1, p2, Point(c.x, min(c.y, u.y))))
 		elseif u.y <= p2.y
 			push!(S, Segment(p1, p2, Point(min(c.x, u.x), c.y)))
+		else
+			push!(S, s)
 		end
 	else
 		if u.x > p1.x
@@ -40,14 +45,23 @@ function filterSegment(::Type{Min}, s::Segment, u::Point)
 	return S
 end
 
-function filterLB(LB, UB)
+function filterLB(LB, UB, debug=false)
 	S = LB
 	for u in UB
+		@show u
 		S_prime = Segment[]
 		for s in S
 			append!(S_prime, filterSegment(Min, s, u))
 		end
 		S = S_prime
+		if debug
+			@show S
+			clf()
+			plotdualbound(S)
+			plot(first.(UB), last.(UB), "ko")
+			sleep(1)
+			println()
+		end
 	end
 	return S
 end

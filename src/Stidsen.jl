@@ -97,7 +97,7 @@ function solve_stidsen(vm, limit=500 ;  showplot = false, docovercuts = true , g
 		end
 		
 		cpt == limit && println("node limit reached")
-		
+
 		append!(resxe, LN.xe)
 		append!(resyn, LN.yn)
 

@@ -88,7 +88,7 @@ function benchmark(itemrange, nrange, runpersize ; args...)
 			m = random_instance(itemrange, n)
 			print(m)
 			global m_problem = m
-			valBC, tBC, _ = @timed solve_BC(m, Inf ; args...);
+			valBC, tBC, _ = @timed solve_stidsen(m, Inf ; args...);
 			status,tEPS,_ = @suppress @timed solve(m, method=:epsilon, round_results=true);
 			if length(getY_N(m)) != length(unique(valBC.YN))
 				@suppress solve(m, method=:epsilon);		
@@ -134,5 +134,5 @@ end
 benchmark(50:100, 10:10, 1)
 # inst = hard_instance2(CplexSolver(CPX_PARAM_SCRIND = 0))
 srand(0)
-benchmark(10:100, 5:3:35, 25)
+benchmark(10:100, 5:5:40, 10, use_nsga=false)
 # solve_BC(inst, Inf)

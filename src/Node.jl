@@ -20,3 +20,13 @@ Base.show(io::IO, n::Node) = begin
 	end
 	print(io, ")")
 end
+
+mutable struct NodeParragh
+	m::JuMP.Model
+	x::Vector{Vector{Float64}}
+	nbcover::Int
+	f0::Set{Int}
+	f1::Set{Int}
+end
+NodeParragh(m) = NodeParragh(copy(m), Vector{Float64}[], 0, Set{Int}(), Set{Int}())
+Base.copy(n::NodeParragh, copy_model=true) = NodeParragh(copy_model ? copy(n.m) : n.m, Vector{Float64}[], n.nbcover, copy(n.f0), copy(n.f1))

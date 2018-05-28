@@ -46,6 +46,9 @@ worst_nadir(p::NonDomPoints) = p.worst_nadir
 isfathomable(z, p::NonDomPoints{Min}) = z > sum(worst_nadir(p).*p.λ)
 isfathomable(z, p::NonDomPoints{Max}) = z < sum(worst_nadir(p).*p.λ)
 
+local_nadir(p::NonDomPoints{Min}) = (p.yn[end][1], p.yn[1][2])
+local_nadir(p::NonDomPoints{Max}) = (p.yn[1][1], p.yn[end][2])
+
 function isweaklydominated(z1, z2, p::NonDomPoints{Min})
 	for (v1, v2) in p.yn
 		if v1 <= z1 && v2 <= z2

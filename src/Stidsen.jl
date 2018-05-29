@@ -1,4 +1,3 @@
-
 function solve_stidsen(vm, limit=500 ;  showplot = false, docovercuts = true , global_branch = false, use_nsga = true, global_nsga = true, lift_covers = false)
 
 	vd = getvOptData(vm)

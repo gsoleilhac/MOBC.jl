@@ -2,7 +2,6 @@ abstract type Sense end
 struct Max<:Sense end
 struct Min<:Sense end
 
-
 mutable struct NonDomPoints{T}
 	xe::Vector{Vector{Int}}
 	yn::Vector{Tuple{Int,Int}}
@@ -45,7 +44,6 @@ nadirs(p::NonDomPoints) = p.nadirs
 worst_nadir(p::NonDomPoints) = p.worst_nadir
 isfathomable(z, p::NonDomPoints{Min}) = z > sum(worst_nadir(p).*p.λ)
 isfathomable(z, p::NonDomPoints{Max}) = z < sum(worst_nadir(p).*p.λ)
-
 local_nadir(p::NonDomPoints{Min}) = (p.yn[end][1], p.yn[1][2])
 local_nadir(p::NonDomPoints{Max}) = (p.yn[1][1], p.yn[end][2])
 

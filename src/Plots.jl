@@ -16,14 +16,11 @@ function plot_int_found(LN, lnglobal, z1, z2 ; marker = "b.", sleeptime = 0.01)
 	plot([LN.yn[1][1], (WS-λ[2]*LN.yn[end][2])/λ[1]], [(WS-λ[1]*LN.yn[1][1])/λ[2], LN.yn[end][2]], "k--")
 
 	ax = gca()
-    ax[:set_xlim]([-1+min(LN.yn[1][1], z1), 1+max(LN.yn[end][1], z1)])
-	ax[:set_ylim]([-1+min(LN.yn[end][2]), 1+max(LN.yn[1][2])])
+    ax[:set_xlim]([-1+min(LN.yn[1][1], z1), 1+max(LN.yn[end][1], z1+1)])
+	ax[:set_ylim]([-1+min(LN.yn[end][2]), 1+max(LN.yn[1][2], z2+1)])
 	show()
 
-
-
 	# figure(2)
-	
 	# LNPLOT=[]
 	# for i = 1:length(lnglobal)
 	# 	push!(LNPLOT, lnglobal.yn[i])
@@ -41,10 +38,8 @@ end
 
 function plot_pareto_branch(LN, z1, z2, bound1, bound2 ; sleeptime = 0.01)
 
-
 	figure(1)
 	clf()
-
 
 	LNPLOT=[]
 	for i = 1:length(LN)
@@ -69,13 +64,16 @@ function plot_pareto_branch(LN, z1, z2, bound1, bound2 ; sleeptime = 0.01)
 	show()
 	
 	sleep(sleeptime)
-
 end
 
 
-function plotdualbound(sl::Vector{<:Segment})
+function plotdualbound(sl::Vector{Segment{T}}) where T
 	for s in sl
-		plot([s.p1.x, s.p2.x, s.c.x, s.c.x, s.p1.x, s.p1.x], [s.p1.y, s.p2.y, s.p2.y, s.c.y, s.c.y, s.p1.y], "g-", linewidth=1)
+		if T == Min
+			plot([s.p1.x, s.p2.x, s.c.x, s.c.x, s.p1.x, s.p1.x], [s.p1.y, s.p2.y, s.p2.y, s.c.y, s.c.y, s.p1.y], "g-", linewidth=1)
+		else
+			plot([s.p1.x, s.p2.x, s.p2.x, s.c.x, s.c.x, s.p1.x], [s.p1.y, s.p2.y, s.c.y, s.c.y, s.p1.y, s.p1.y], "g-", linewidth=1)
+		end
 		plot([s.p1.x, s.p2.x], [s.p1.y, s.p2.y], "gs", markersize=3)
 		plot([s.c.x, s.c.x], [s.c.y, s.c.y], "kx", markersize=3)
 	end

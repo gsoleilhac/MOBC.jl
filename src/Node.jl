@@ -29,4 +29,4 @@ mutable struct NodeParragh
 	f1::Set{Int}
 end
 NodeParragh(m) = NodeParragh(copy(m), Vector{Float64}[], 0, Set{Int}(), Set{Int}())
-Base.copy(n::NodeParragh, copy_model=true) = NodeParragh(copy_model ? copy(n.m) : n.m, Vector{Float64}[], n.nbcover, copy(n.f0), copy(n.f1))
+Base.copy(n::NodeParragh, copy_model=true) = NodeParragh(copy_model ? copy(n.m) : n.m, Vector{Float64}[], n.nbcover-1, copy(n.f0), copy(n.f1))

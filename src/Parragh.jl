@@ -24,8 +24,11 @@ struct Segment{T}
 end
 Base.show(io::IO, s::Segment) = print(io, "Sgm[$(s.p1), $(s.p2)]")
 
+nadir(v::Vector{Segment{Min}}) = (maximum(x-> x.c.x, v), maximum(x-> x.c.y, v))
+nadir(v::Vector{Segment{Max}}) = (minimum(x-> x.c.x, v), minimum(x-> x.c.y, v))
+
 function filterSegment(s::Segment{Min}, u0::Point)
-	u = Point(u0.x - 0.999, u0.y - 0.999)
+	u = Point(u0.x - 0.5, u0.y - 0.5)
 	S = Segment{Min}[]
 	p1, p2, c = s.p1, s.p2, s.c
 	if u.y >= s.a * u.x + s.b || u.y >= p1.y || u.x >= p2.x #u does not dominate any point on segment s
@@ -47,9 +50,8 @@ function filterSegment(s::Segment{Min}, u0::Point)
 	return S
 end
 
-
 function filterSegment(s::Segment{Max}, u0::Point)
-	u = Point(u0.x + 0.999, u0.y + 0.999)
+	u = Point(u0.x + 0.5, u0.y + 0.5)
 	S = Segment{Max}[]
 	p1, p2, c = s.p1, s.p2, s.c
 	if u.y <= s.a * u.x + s.b || u.y <= p2.y || u.x <= p1.x #u does not dominate any point on segment s
@@ -148,8 +150,9 @@ function groupby_continuous(v)
 	res
 end
 
-function solve_parragh(vm, limit=500 ;  showplot = false, docovercuts = false , global_branch = false, use_nsga = true, global_nsga = true, lift_covers = false)
-
+function solve_parragh(model, limit=Inf ;  showplot = false, docovercuts = true, global_branch = false, use_nsga = true, global_nsga = true, lift_covers = false)
+	
+	vm = copy(model)
 	vd = getvOptData(vm)
 	@assert length(vd.objs) == 2
 	@assert all(isonlybinary.(vm, vd.objs))
@@ -160,11 +163,11 @@ function solve_parragh(vm, limit=500 ;  showplot = false, docovercuts = false , 
 	cstrData = ConstraintData(vm)
 
 	z1, z2 = vd.objs
-	status = global_branch ? solve(vm, method=:lexico) : solve(vm, method=:dicho, round_results=true)
+	status = global_branch ? solve(vm, method=:lexico, verbose=false) : solve(vm, method=:dicho, round_results=true)
 	status == :Optimal || return status
 
 	YN_convex = map(x->round.(Int, x), getY_N(vm))
-	XE_convex = [[getvalue(JuMP.Variable(vm, i), j) for i = 1:vm.numCols] for j = 1:length(YN_convex)]
+	XE_convex = [[round(getvalue(JuMP.Variable(vm, i), j)) for i = 1:vm.numCols] for j = 1:length(YN_convex)]
 
 	if length(YN_convex) == 1 || YN_convex[1] == YN_convex[end]
 		return @NT(YN = YN_convex, XE = XE_convex, nodes=0)
@@ -188,7 +191,6 @@ function solve_parragh(vm, limit=500 ;  showplot = false, docovercuts = false , 
 			NSGAII.fast_non_dominated_sort!(ns, sense==Max ? NSGAII.Max() : NSGAII.Min())
 			filter!(x->x.rank == 1, ns)
 		end
-		
 		ns = unique(x->x.y, ns)
 		sort!(ns, by=x->x.y[1])
 		LN_NSGA = NonDomPoints(sense, map(x->x.pheno, ns), map(x->Tuple(x.y), ns))
@@ -265,14 +267,15 @@ function process_node_parragh(n::NodeParragh, S, sense, LN, obj1, obj2, LNGlobal
 	res != :Optimal && return
 
 	YN_relax = getY_N(n.m)
-	n.x = [[getvalue(JuMP.Variable(n.m, i), j) for i = 1:n.m.numCols] for j = 1:length(YN_relax)]
+	n.x = [[round(getvalue(JuMP.Variable(n.m, i), j), 10) for i = 1:n.m.numCols] for j = 1:length(YN_relax)]
+	new_int_found = false
     
-	inds = find(x -> all(isinteger, x), YN_relax)
+	inds = find(x -> all(isinteger, x), n.x)
 	for i in inds
-		x = [getvalue(JuMP.Variable(n.m, col), i) for col = 1:n.m.numCols]
 		z1, z2 = YN_relax[i]
-		if all(isinteger, x) && !isweaklydominated(z1, z2, LN)
-			push!(LN, x, (z1, z2))
+		if !isweaklydominated(z1, z2, LN)
+			push!(LN, n.x[i], (round(z1), round(z2)))
+			new_int_found = true
 		end
 	end
 	
@@ -308,42 +311,39 @@ function process_node_parragh(n::NodeParragh, S, sense, LN, obj1, obj2, LNGlobal
 		#Dual bound set is dominated by the primal set, discard that node
 		return
 	elseif length(filteredDual) == 1
-		if docovercuts && n.nbcover <= 10 && find_cover_cuts(n, cstrData, lift_covers)
+		if new_int_found
+			push!(S, parragh_branch(n, first(filteredDual), obj1, obj2))
+		elseif docovercuts && n.nbcover <= 10 && find_cover_cuts(n, cstrData, lift_covers)
 			n.nbcover += 1
 			process_node_parragh(n, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
 		else
 			#branch classique
-			n1, n2 = basicbranch_parragh(n)
+			n1, n2 = basicbranch_parragh(n, filteredDual[1], primal, sense)
 			push!(S, n1)
 			push!(S, n2)
 		end
 	else
-		# MOBC.filterDualBound(dual, primal, true)
 		for segmentList in filteredDual
 			push!(S, parragh_branch(n, segmentList, obj1, obj2))
 		end
-		showplot && sleep(5)
 	end
-
+	return
 end
 
 function parragh_branch(n, segmentList::Vector{Segment{T}}, obj1, obj2) where T
 	node = copy(n)
+	boundz1, boundz2 = nadir(segmentList)
 	if T == Min
-		boundz1 = maximum(x-> x.c.x, segmentList)
-		boundz2 = maximum(x-> x.c.y, segmentList)
 		@constraint(node.m, copy(obj1, node.m).aff <= boundz1)
 		@constraint(node.m, copy(obj2, node.m).aff <= boundz2)	
 	else
-		boundz1 = minimum(x-> x.c.x, segmentList)
-		boundz2 = minimum(x-> x.c.y, segmentList)
 		@constraint(node.m, copy(obj1, node.m).aff >= boundz1)
 		@constraint(node.m, copy(obj2, node.m).aff >= boundz2)
 	end
 	node
 end
 
-function basicbranch_parragh(n)
+function basicbranch_parragh(n, dualbound, primal, sense)
 	frac = zeros(length(n.x[1]))
 	for i = 1:length(n.x)
 		for j = 1:length(n.x[i])
@@ -352,7 +352,13 @@ function basicbranch_parragh(n)
 			end
 		end
 	end
-	ind = indmax(frac)
+
+	ind = if maximum(frac) > 1E-6
+		indmax(frac)
+	else
+		findfirst(x->!(x in n.f0) && !(x in n.f1), 1:n.m.numCols)
+	end
+
 	n1, n2 = copy(n), copy(n, false)
 	setlowerbound(JuMP.Variable(n1.m, ind), 1.) ; push!(n1.f1, ind)
 	setupperbound(JuMP.Variable(n2.m, ind), 0.) ; push!(n2.f0, ind)

@@ -1,4 +1,4 @@
-function solve_stidsen(vm, limit=500 ;  showplot = false, docovercuts = true , global_branch = false, use_nsga = true, global_nsga = true, lift_covers = false)
+function solve_stidsen(vm, limit=Inf ;  showplot = false, docovercuts = true , global_branch = false, use_nsga = true, global_nsga = true, lift_covers = false)
 
 	vd = getvOptData(vm)
 	@assert length(vd.objs) == 2
@@ -10,11 +10,11 @@ function solve_stidsen(vm, limit=500 ;  showplot = false, docovercuts = true , g
 	cstrData = ConstraintData(vm)
 
 	z1, z2 = vd.objs
-	status = global_branch ? solve(vm, method=:lexico) : solve(vm, method=:dicho, round_results=true)
+	status = global_branch ? solve(vm, method=:lexico, verbose=false) : solve(vm, method=:dicho, round_results=true)
 	status == :Optimal || return status
 
 	YN_convex = map(x->round.(Int, x), getY_N(vm))
-	XE_convex = [[getvalue(JuMP.Variable(vm, i), j) for i = 1:vm.numCols] for j = 1:length(YN_convex)]
+	XE_convex = [[round(getvalue(JuMP.Variable(vm, i), j)) for i = 1:vm.numCols] for j = 1:length(YN_convex)]
 
 	if length(YN_convex) == 1 || YN_convex[1] == YN_convex[end]
 		return @NT(YN = YN_convex, XE = XE_convex, nodes=0)

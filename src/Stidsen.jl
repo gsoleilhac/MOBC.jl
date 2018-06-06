@@ -31,9 +31,9 @@ function solve_stidsen(vm, limit=Inf ;  showplot = false, docovercuts = true , g
 		modelnsga.ext[:vOpt].objs = [z1, z2]
 
 		if global_nsga
-			ns = nsga(100, 1000, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
+			ns = nsga(50, 500, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
 		else
-			ns = union((nsga(100, 200, modelnsga, seed=[XE_convex[i], XE_convex[i+1]], pmut=0.3, showprogress=false) for i = 1:length(XE_convex)-1)...)
+			ns = union((nsga(50, 200, modelnsga, seed=[XE_convex[i], XE_convex[i+1]], pmut=0.3, showprogress=false) for i = 1:length(XE_convex)-1)...)
 			#if we do one nsga per triangle, we can have dominated solutions here.
 			NSGAII.fast_non_dominated_sort!(ns, sense==Max ? NSGAII.Max() : NSGAII.Min())
 			filter!(x->x.rank == 1, ns)
@@ -148,9 +148,15 @@ function process_node_stidsen(n::Node, S, sense, LN, obj1, obj2, LNGlobal, cstrD
 		else
 			# println("not binary, not dominated : basic branch")
 			showplot && plot_int_found(LN, LNGlobal, z1, z2, sleeptime=0.01, marker="k.")
-			if docovercuts && n.nbcover <= 10 && find_cover_cuts(n, cstrData, lift_covers)
+			if docovercuts && n.nbcover <= 7
 				n.nbcover += 1
-				process_node_stidsen(n, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
+				if find_cover_cuts(n, cstrData, lift_covers)
+					return process_node_stidsen(n, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
+				else
+					n1, n2 = basicbranch(n)
+					push!(S, n1)
+					push!(S, n2)
+				end
 			else
 				n1, n2 = basicbranch(n)
 				push!(S, n1)

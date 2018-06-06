@@ -184,7 +184,7 @@ function solve_parragh(model, limit=Inf ;  showplot = false, docovercuts = true,
 		modelnsga.ext[:vOpt].objs = [z1, z2]
 
 		if global_nsga
-			ns = nsga(100, 1000, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
+			ns = nsga(50, 500, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
 		else
 			ns = union((nsga(100, 200, modelnsga, seed=[XE_convex[i], XE_convex[i+1]], pmut=0.3, showprogress=false) for i = 1:length(XE_convex)-1)...)
 			#if we do one nsga per triangle, we can have dominated solutions here.
@@ -313,9 +313,16 @@ function process_node_parragh(n::NodeParragh, S, sense, LN, obj1, obj2, LNGlobal
 	elseif length(filteredDual) == 1
 		if new_int_found
 			push!(S, parragh_branch(n, first(filteredDual), obj1, obj2))
-		elseif docovercuts && n.nbcover <= 10 && find_cover_cuts(n, cstrData, lift_covers)
+		elseif docovercuts && n.nbcover <= 7
 			n.nbcover += 1
-			process_node_parragh(n, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
+			if find_cover_cuts(n, cstrData, lift_covers)
+				return process_node_parragh(n, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
+			else
+				#branch classique
+				n1, n2 = basicbranch_parragh(n, filteredDual[1], primal, sense)
+				push!(S, n1)
+				push!(S, n2)
+			end
 		else
 			#branch classique
 			n1, n2 = basicbranch_parragh(n, filteredDual[1], primal, sense)

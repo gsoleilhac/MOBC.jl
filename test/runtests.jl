@@ -1,11 +1,12 @@
 using MOBC, vOptGeneric, CPLEX, PyPlot, Suppressor
 using Base.Test
 
-function random_instance(range, n)
+function random_instance(range, n, rng)
+	MT = MersenneTwister(rng)
 	m = vModel(solver = CplexSolver(CPX_PARAM_SCRIND = 0))
-	p1 = rand(range, n)
-	p2 = rand(range, n)
-	w = [rand(range, n) for i = 1:3]
+	p1 = rand(MT, range, n)
+	p2 = rand(MT, range, n)
+	w = [rand(MT, range, n) for i = 1:3]
 	c = sum.(w).÷2
 
 	@variable(m, x[1:length(p1)], Bin)
@@ -38,6 +39,7 @@ function hard_instance(solver=CplexSolver(CPX_PARAM_SCRIND = 0))
 end
 
 function benchmark(itemrange, nrange, runpersize ; args...)
+	rng = 0
 	res_stidsen=Dict{Int, Vector{Float64}}() ; nb_nodes_stidsen=Dict{Int, Vector{Int}}()
 	res_parragh=Dict{Int, Vector{Float64}}() ; nb_nodes_parragh=Dict{Int, Vector{Int}}()
 	res_eps=Dict{Int, Vector{Float64}}()
@@ -45,7 +47,8 @@ function benchmark(itemrange, nrange, runpersize ; args...)
 		res_stidsen[n]=Float64[] ; res_parragh[n]=Float64[] ; res_eps[n]=Float64[]
 		nb_nodes_stidsen[n]=Int[] ; nb_nodes_parragh[n]=Int[]
 		for i = 1:runpersize
-			m = random_instance(itemrange, n)
+			m = random_instance(itemrange, n, rng)
+			rng += 1
 			global m_current = m
 			valBC, tBC, _ = @timed solve_stidsen(m, Inf ; args...);
 			valPAR, tPAR, _ = @timed solve_parragh(m, Inf ; args...);
@@ -71,23 +74,23 @@ function benchmark(itemrange, nrange, runpersize ; args...)
 			xlabel("n") ; ylabel("t(s)") ; title("time per instance")
 			plot([],[],"gx",markersize=3,label="stidsen") ; plot([],[],"bx",markersize=3,label="parragh") ; plot([],[],"k.",markersize=3,label="epsilon")
 			for k in keys(res_stidsen)
-				plot(fill(k, length(res_stidsen[k])), res_stidsen[k], "gx", markersize="3")
-				plot(fill(k, length(res_stidsen[k])), res_parragh[k], "bx", markersize="3")
-				plot(fill(k, length(res_stidsen[k])), res_eps[k], "k.", markersize="3")
+				plot(fill(k, length(res_stidsen[k])), res_stidsen[k], "gx", markersize=3)
+				plot(fill(k, length(res_stidsen[k])), res_parragh[k], "bx", markersize=3)
+				plot(fill(k, length(res_stidsen[k])), res_eps[k], "k.", markersize=3)
 			end
 			legend()
 
 			figure(2) ; clf()
 			xlabel("n") ; ylabel("#nodes") ; title("average time and #nodes")
 			k = sort(collect(keys(res_stidsen)))
-			plot(k, [mean(nb_nodes_stidsen[a]) for a in k], "gs", markersize="3") ; plot(k, [mean(nb_nodes_stidsen[a]) for a in k], "g--", linewidth=1)
-			plot(k, [mean(nb_nodes_parragh[a]) for a in k], "bs", markersize="3") ; plot(k, [mean(nb_nodes_parragh[a]) for a in k], "b--", linewidth=1)
+			plot(k, [mean(nb_nodes_stidsen[a]) for a in k], "gs", markersize=3) ; plot(k, [mean(nb_nodes_stidsen[a]) for a in k], "g--", linewidth=1)
+			plot(k, [mean(nb_nodes_parragh[a]) for a in k], "bs", markersize=3) ; plot(k, [mean(nb_nodes_parragh[a]) for a in k], "b--", linewidth=1)
 			twinx() ; ylabel("t(s)")
-			plot([],[],"gs",markersize="3",label="#nodes stidsen") #labels dont work after twinx(), had to put a dummy plot 
-			plot([],[],"bs",markersize="3",label="#nodes parragh")
-			plot(k, [mean(res_stidsen[a]) for a in k], "gx", markersize="3", label="tmoy stidsen") ; plot(k, [mean(res_stidsen[a]) for a in k], "g-", linewidth=1)
-			plot(k, [mean(res_parragh[a]) for a in k], "bx", markersize="3", label="tmoy parragh") ; plot(k, [mean(res_parragh[a]) for a in k], "b-", linewidth=1)
-			plot(k, [mean(res_eps[a])for a in k], "b.", markersize="3", label="tmoy epsilon")
+			plot([],[],"g--",markersize=3,label="#nodes stidsen") #labels dont work after twinx(), had to put a dummy plot 
+			plot([],[],"b--",markersize=3,label="#nodes parragh")
+			plot(k, [mean(res_stidsen[a]) for a in k], "gx", markersize=3) ; plot(k, [mean(res_stidsen[a]) for a in k], "g-", linewidth=1, label="tmoy stidsen")
+			plot(k, [mean(res_parragh[a]) for a in k], "bx", markersize=3) ; plot(k, [mean(res_parragh[a]) for a in k], "b-", linewidth=1, label="tmoy parragh")
+			plot(k, [mean(res_eps[a])for a in k], "k-", linewidth=1, label="tmoy epsilon")
 			legend()
 		end
 		println("\n####################################\nn = $n")
@@ -97,8 +100,7 @@ function benchmark(itemrange, nrange, runpersize ; args...)
 	res_stidsen, res_parragh, res_eps, nb_nodes_stidsen, nb_nodes_parragh
 end
 
-benchmark(50:100, 10:10, 1, use_nsga=true, global_branch=false, docovercuts=true)
+benchmark(50:150, 10:11, 1, use_nsga=true, global_branch=true, docovercuts=true)
 # inst = hard_instance2(CplexSolver(CPX_PARAM_SCRIND = 0))
 srand(0)
-# benchmark(50:100, 5:5:40, 15, use_nsga=true, global_branch=false, docovercuts=true)
-# solve_BC(inst, Inf)
+benchmark(50:150, 10:5:35, 5, use_nsga=true, global_branch=true, docovercuts=true)

@@ -116,9 +116,9 @@ function process_node_stidsen(n::Node, S, sense, LN, obj1, obj2, LNGlobal, cstrD
 	n.zparent != Inf && isfathomable(n.zparent, LN) && return
 	res = @suppress solve(n.m, ignore_solve_hook=true, relaxation=true)
 	res != :Optimal && return
-	n.z = getobjectivevalue(n.m)
-	n.x = n.m.colVal
-
+	n.z = round(getobjectivevalue(n.m), 8)
+	n.x = round.(n.m.colVal, 8)
+	
 	z1, z2 = evaluate(n.x, obj1), evaluate(n.x, obj2)
 
 	if isfathomable(n.z, LN)
@@ -136,9 +136,10 @@ function process_node_stidsen(n::Node, S, sense, LN, obj1, obj2, LNGlobal, cstrD
 			push!(LN, n.x, (z1, z2))
 			# push!(S, integerbranch(n))
 			append!(S, paretobranch(sense, n, z1, z2, LN, obj1, obj2, showplot))
-			showplot && plot_int_found(LN, LNGlobal, z1, z2)
+			showplot && plot_int_found(LN, LNGlobal, z1, z2, sleeptime=1)
 		end
 	else
+		# println("not binary")
 		if isweaklydominated(z1, z2, LN)
 			# println("not binary, dominated : paretobranch")
 			showplot && plot_int_found(LN, LNGlobal, z1, z2, marker="r.")
@@ -218,8 +219,8 @@ function paretobranch(sense::Type{Max}, n, z1, z2, LN, obj1, obj2, showplot)
 		right += 1
 	end
 
-	boundz1 = right < length(LN) ? nadirs(LN)[right][1] + 1. : NaN
-	boundz2 = left > 0 ? nadirs(LN)[left][2] + 1. : NaN
+	boundz1 = right < length(LN) ? nadirs(LN)[right][1] + 0.5 : NaN
+	boundz2 = left > 0 ? nadirs(LN)[left][2] + 0.5 : NaN
 
 	res = Node[]
 

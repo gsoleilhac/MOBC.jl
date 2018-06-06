@@ -36,7 +36,7 @@ function plot_int_found(LN, lnglobal, z1, z2 ; marker = "b.", sleeptime = 0.01)
 	sleep(sleeptime)
 end
 
-function plot_pareto_branch(LN, z1, z2, bound1, bound2 ; sleeptime = 0.01)
+function plot_pareto_branch(LN, z1, z2, bound1, bound2 ; sleeptime = 1)
 
 	figure(1)
 	clf()

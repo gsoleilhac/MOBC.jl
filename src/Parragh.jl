@@ -267,9 +267,9 @@ function process_node_parragh(n::NodeParragh, S, sense, LN, obj1, obj2, LNGlobal
 	res != :Optimal && return
 
 	YN_relax = getY_N(n.m)
-	n.x = [[round(getvalue(JuMP.Variable(n.m, i), j), 10) for i = 1:n.m.numCols] for j = 1:length(YN_relax)]
-	new_int_found = false
+	n.x = [[round(getvalue(JuMP.Variable(n.m, i), j), 8) for i = 1:n.m.numCols] for j = 1:length(YN_relax)]
     
+	new_int_found = false
 	inds = find(x -> all(isinteger, x), n.x)
 	for i in inds
 		z1, z2 = YN_relax[i]

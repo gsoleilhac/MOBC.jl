@@ -100,7 +100,7 @@ function benchmark(itemrange, nrange, runpersize ; args...)
 	res_stidsen, res_parragh, res_eps, nb_nodes_stidsen, nb_nodes_parragh
 end
 
-benchmark(50:150, 10:11, 1, use_nsga=true, global_branch=true, docovercuts=true)
+benchmark(1:20, 10:11, 1, use_nsga=true, global_branch=false, docovercuts=true)
 # inst = hard_instance2(CplexSolver(CPX_PARAM_SCRIND = 0))
 srand(0)
-benchmark(50:150, 10:5:35, 5, use_nsga=true, global_branch=true, docovercuts=true)
+benchmark(1:20, 10:5:40, 5, use_nsga=true, global_branch=false, docovercuts=true)

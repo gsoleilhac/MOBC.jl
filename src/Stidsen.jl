@@ -31,9 +31,9 @@ function solve_stidsen(vm, limit=Inf ;  showplot = false, docovercuts = true , g
 		modelnsga.ext[:vOpt].objs = [z1, z2]
 
 		if global_nsga
-			ns = nsga(50, 500, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
+			ns = nsga_binary(50, 500, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
 		else
-			ns = union((nsga(50, 200, modelnsga, seed=[XE_convex[i], XE_convex[i+1]], pmut=0.3, showprogress=false) for i = 1:length(XE_convex)-1)...)
+			ns = union((nsga_binary(50, 200, modelnsga, seed=[XE_convex[i], XE_convex[i+1]], pmut=0.3, showprogress=false) for i = 1:length(XE_convex)-1)...)
 			#if we do one nsga per triangle, we can have dominated solutions here.
 			NSGAII.fast_non_dominated_sort!(ns, sense==Max ? NSGAII.Max() : NSGAII.Min())
 			filter!(x->x.rank == 1, ns)
@@ -74,18 +74,21 @@ function solve_stidsen(vm, limit=Inf ;  showplot = false, docovercuts = true , g
 		JuMP.setobjective(m, vd.objSenses[1], Ƶ.aff)
 
 		if sense == Max
-			@constraint(m, Ƶ1.aff >= LN.yn[1][1] + 1)
-			@constraint(m, Ƶ2.aff >= LN.yn[end][2] + 1)
+			bound1 = LN.yn[1][1] + 1
+			bound2 = LN.yn[end][2] + 1
+			cstr1 = @constraint(m, Ƶ1.aff >= bound1)
+			cstr2 = @constraint(m, Ƶ2.aff >= bound2)
 			# @constraint(m, Ƶ.aff <= LN.λ[1]*LN.yn[1][1] + LN.λ[2]*LN.yn[1][2])
 		else
-			@constraint(m, Ƶ1.aff <= LN.yn[end][1] - 1)
-			@constraint(m, Ƶ2.aff <= LN.yn[1][2] - 1)
+			bound1 = LN.yn[end][1] - 1
+			bound2 = LN.yn[1][2] - 1
+			cstr1 = @constraint(m, Ƶ1.aff <= bound1)
+			cstr2 = @constraint(m, Ƶ2.aff <= bound2)
 		end
 
 		#Stack of nodes to evaluate
-		S = [Node(m)]
+		S = [Node(m, bound1, bound2, cstr1, cstr2)]
 
-		
 		#Solve while there are nodes to process
 		cpt = 0
 		while !isempty(S) && cpt < limit
@@ -110,11 +113,39 @@ function solve_stidsen(vm, limit=Inf ;  showplot = false, docovercuts = true , g
 	return @NT(YN = YN, XE = resxe, nodes = nbNodesTotal)
 end
 
+function setRHS!(n::Union{Node, NodeParragh})
+	JuMP.setRHS(n.cstr1, n.bound1)
+	JuMP.setRHS(n.cstr2, n.bound2)
+end
+
+function fix_variables!(n::Union{Node, NodeParragh})
+	for i in n.f1
+		setlowerbound(JuMP.Variable(n.m, i), 1.)
+	end
+	for i in n.f0
+		setupperbound(JuMP.Variable(n.m, i), 0.)
+	end
+end
+
+function unfix_variables!(n::Union{Node, NodeParragh})
+	for i in n.f1
+		setlowerbound(JuMP.Variable(n.m, i), 0.)
+	end
+	for i in n.f0
+		setupperbound(JuMP.Variable(n.m, i), 1.)
+	end
+end
+
 
 function process_node_stidsen(n::Node, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
 
 	n.zparent != Inf && isfathomable(n.zparent, LN) && return
+
+	fix_variables!(n)
+	setRHS!(n)
 	res = @suppress solve(n.m, ignore_solve_hook=true, relaxation=true)
+	unfix_variables!(n)
+
 	res != :Optimal && return
 	n.z = round(getobjectivevalue(n.m), 8)
 	n.x = round.(n.m.colVal, 8)
@@ -150,14 +181,12 @@ function process_node_stidsen(n::Node, S, sense, LN, obj1, obj2, LNGlobal, cstrD
 			# println("not binary, not dominated : basic branch")
 			showplot && plot_int_found(LN, LNGlobal, z1, z2, sleeptime=0.01, marker="k.")
 			if docovercuts && n.nbcover <= 7
-				n.nbcover += 1
 				if find_cover_cuts(n, cstrData, lift_covers)
-					return process_node_stidsen(n, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
+					n.nbcover += 1
 				else
-					n1, n2 = basicbranch(n)
-					push!(S, n1)
-					push!(S, n2)
+					n.nbcover = 8
 				end
+				return process_node_stidsen(n, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
 			else
 				n1, n2 = basicbranch(n)
 				push!(S, n1)
@@ -189,13 +218,15 @@ function paretobranch(sense::Type{Min}, n, z1, z2, LN, obj1, obj2, showplot)
 	res = Node[]
 
 	if !isnan(boundz1)
-		n1 = copy(n)
-		@constraint(n1.m, copy(obj1, n1.m).aff <= boundz1)
+		n1 = shallowcopy(n)
+		n1.bound1 = boundz1
+		# @constraint(n1.m, copy(obj1, n1.m).aff <= boundz1)
 		push!(res, n1)
 	end
 	if !isnan(boundz2)
-		n2 = copy(n)
-		@constraint(n2.m, copy(obj2, n2.m).aff <= boundz2)
+		n2 = shallowcopy(n)
+		n2.bound2 = boundz2
+		# @constraint(n2.m, copy(obj2, n2.m).aff <= boundz2)
 		push!(res, n2)
 	end
 	showplot && plot_pareto_branch(LN, z1, z2, boundz1, boundz2, sleeptime=0.01)
@@ -225,13 +256,15 @@ function paretobranch(sense::Type{Max}, n, z1, z2, LN, obj1, obj2, showplot)
 	res = Node[]
 
 	if !isnan(boundz1)
-		n1 = copy(n)
-		@constraint(n1.m, copy(obj1, n1.m).aff >= boundz1)
+		n1 = shallowcopy(n)
+		n1.bound1 = boundz1
+		# @constraint(n1.m, copy(obj1, n1.m).aff >= boundz1)
 		push!(res, n1)
 	end
 	if !isnan(boundz2)
-		n2 = copy(n)
-		@constraint(n2.m, copy(obj2, n2.m).aff >= boundz2)
+		n2 = shallowcopy(n)
+		n2.bound2 = boundz2
+		# @constraint(n2.m, copy(obj2, n2.m).aff >= boundz2)
 		push!(res, n2)
 	end
 	showplot && plot_pareto_branch(LN, z1, z2, boundz1, boundz2, sleeptime=0.01)
@@ -240,10 +273,9 @@ function paretobranch(sense::Type{Max}, n, z1, z2, LN, obj1, obj2, showplot)
 end
 
 function basicbranch(n)
-	# i = findfirst(x -> !isinteger(x), n.x)
 	i = indmax(map(x->x>0.5 ? 1-x : x, n.x))
-	n1, n2 = copy(n), copy(n, false)
-	setlowerbound(JuMP.Variable(n1.m, i), 1.) ; push!(n1.f1, i)
-	setupperbound(JuMP.Variable(n2.m, i), 0.) ; push!(n2.f0, i)
+	n1, n2 = shallowcopy(n), shallowcopy(n)
+	push!(n1.f1, i)
+	push!(n2.f0, i)
 	n1, n2
 end

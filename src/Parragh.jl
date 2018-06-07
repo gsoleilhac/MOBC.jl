@@ -226,16 +226,20 @@ function solve_parragh(model, limit=Inf ;  showplot = false, docovercuts = true,
 		# JuMP.setobjective(m, vd.objSenses[1], Ƶ.aff)
 
 		if sense == Max
-			@constraint(m, Ƶ1.aff >= LN.yn[1][1] + 1)
-			@constraint(m, Ƶ2.aff >= LN.yn[end][2] + 1)
+			bound1 = LN.yn[1][1] + 1
+			bound2 = LN.yn[end][2] + 1
+			cstr1 = @constraint(m, Ƶ1.aff >= bound1)
+			cstr2 = @constraint(m, Ƶ2.aff >= bound2)
 			# @constraint(m, Ƶ.aff <= LN.λ[1]*LN.yn[1][1] + LN.λ[2]*LN.yn[1][2])
 		else
-			@constraint(m, Ƶ1.aff <= LN.yn[end][1] - 1)
-			@constraint(m, Ƶ2.aff <= LN.yn[1][2] - 1)
+			bound1 = LN.yn[end][1] - 1
+			bound2 = LN.yn[1][2] - 1
+			cstr1 = @constraint(m, Ƶ1.aff <= bound1)
+			cstr2 = @constraint(m, Ƶ2.aff <= bound2)
 		end
 
 		#Stack of nodes to evaluate
-		S = [NodeParragh(m)]
+		S = [NodeParragh(m, bound1, bound2, cstr1, cstr2)]
 		
 		#Solve while there are nodes to process
 		cpt = 0
@@ -263,9 +267,12 @@ end
 
 function process_node_parragh(n::NodeParragh, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
 
+	fix_variables!(n)
+	setRHS!(n)
 	res = @suppress solve(n.m, method=:dicho, relax=true)
+	unfix_variables!(n)
 	res != :Optimal && return
-
+	
 	YN_relax = getY_N(n.m)
 	n.x = [[round(getvalue(JuMP.Variable(n.m, i), j), 8) for i = 1:n.m.numCols] for j = 1:length(YN_relax)]
     
@@ -308,28 +315,30 @@ function process_node_parragh(n::NodeParragh, S, sense, LN, obj1, obj2, LNGlobal
 	filteredDual = MOBC.filterDualBound(dual, primal, showplot)
 
 	if isempty(filteredDual)
+		# println("dual bound set empty, discarded")
 		#Dual bound set is dominated by the primal set, discard that node
 		return
 	elseif length(filteredDual) == 1
 		if new_int_found
+			# println("int found -> pareto-branching")
 			push!(S, parragh_branch(n, first(filteredDual), obj1, obj2))
 		elseif docovercuts && n.nbcover <= 7
-			n.nbcover += 1
-			if find_cover_cuts(n, cstrData, lift_covers)
-				return process_node_parragh(n, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
+			if isempty(n.f1) && isempty(n.f0) && find_cover_cuts(n, cstrData, lift_covers)
+				n.nbcover += 1
 			else
-				#branch classique
-				n1, n2 = basicbranch_parragh(n, filteredDual[1], primal, sense)
-				push!(S, n1)
-				push!(S, n2)
+				n.nbcover = 8
 			end
+			# println("tried cover cuts")
+			return process_node_parragh(n, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
 		else
 			#branch classique
-			n1, n2 = basicbranch_parragh(n, filteredDual[1], primal, sense)
+			# println("branch classique")
+			n1, n2 = basicbranch_parragh(n, filteredDual[1])
 			push!(S, n1)
 			push!(S, n2)
 		end
 	else
+		# println("pareto branching")
 		for segmentList in filteredDual
 			push!(S, parragh_branch(n, segmentList, obj1, obj2))
 		end
@@ -338,19 +347,21 @@ function process_node_parragh(n::NodeParragh, S, sense, LN, obj1, obj2, LNGlobal
 end
 
 function parragh_branch(n, segmentList::Vector{Segment{T}}, obj1, obj2) where T
-	node = copy(n)
+	node = shallowcopy(n)
 	boundz1, boundz2 = nadir(segmentList)
-	if T == Min
-		@constraint(node.m, copy(obj1, node.m).aff <= boundz1)
-		@constraint(node.m, copy(obj2, node.m).aff <= boundz2)	
+
+	if T == Max
+		@assert boundz1 > n.bound1 || boundz2 > n.bound2
+		node.bound1 = max(node.bound1, boundz1)
+		node.bound2 = max(node.bound2, boundz2)
 	else
-		@constraint(node.m, copy(obj1, node.m).aff >= boundz1)
-		@constraint(node.m, copy(obj2, node.m).aff >= boundz2)
+		node.bound1 = min(node.bound1, boundz1)
+		node.bound2 = min(node.bound2, boundz2)
 	end
 	node
 end
 
-function basicbranch_parragh(n, dualbound, primal, sense)
+function basicbranch_parragh(n, dualbound)
 	frac = zeros(length(n.x[1]))
 	for i = 1:length(n.x)
 		for j = 1:length(n.x[i])
@@ -366,9 +377,11 @@ function basicbranch_parragh(n, dualbound, primal, sense)
 		findfirst(x->!(x in n.f0) && !(x in n.f1), 1:n.m.numCols)
 	end
 
-	n1, n2 = copy(n), copy(n, false)
-	setlowerbound(JuMP.Variable(n1.m, ind), 1.) ; push!(n1.f1, ind)
-	setupperbound(JuMP.Variable(n2.m, ind), 0.) ; push!(n2.f0, ind)
+	n1, n2 = shallowcopy(n), shallowcopy(n)
+
+	push!(n1.f1, ind)
+	push!(n2.f0, ind)
+
 	# println("branching on variable $ind")
 	n1, n2
 end

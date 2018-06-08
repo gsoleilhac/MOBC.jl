@@ -90,6 +90,8 @@ function solve_stidsen(model, limit=Inf ;  showplot = false, docovercuts = true 
 		#Stack of nodes to evaluate
 		S = [Node(m, bound1, bound2, cstr1, cstr2)]
 
+		apply_cuts!(S[1], cstrData, lift_covers)
+
 		#Solve while there are nodes to process
 		cpt = 0
 		while !isempty(S) && cpt < limit
@@ -137,6 +139,18 @@ function unfix_variables!(n::Union{Node, NodeParragh})
 	end
 end
 
+function apply_cuts!(n::Node, cstrData, lift_covers, nb_try = 15)
+	for i = 1:nb_try
+		res = @suppress solve(n.m, ignore_solve_hook=true, relaxation=true)
+		res != :Optimal && return
+		n.z = round(getobjectivevalue(n.m), 8)
+		n.x = round.(n.m.colVal, 8)
+		success = find_cover_cuts(n, cstrData, lift_covers)
+		!success && return
+	end
+	return
+end
+
 
 function process_node_stidsen(n::Node, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
 
@@ -166,7 +180,6 @@ function process_node_stidsen(n::Node, S, sense, LN, obj1, obj2, LNGlobal, cstrD
 		else
 			# println("new int solution found")
 			push!(LN, n.x, (z1, z2))
-			# push!(S, integerbranch(n))
 			append!(S, paretobranch(sense, n, z1, z2, LN, obj1, obj2, showplot))
 			showplot && plot_int_found(LN, LNGlobal, z1, z2, sleeptime=1)
 		end
@@ -181,18 +194,9 @@ function process_node_stidsen(n::Node, S, sense, LN, obj1, obj2, LNGlobal, cstrD
 		else
 			# println("not binary, not dominated : basic branch")
 			showplot && plot_int_found(LN, LNGlobal, z1, z2, sleeptime=0.01, marker="k.")
-			if docovercuts && n.nbcover <= 7
-				if find_cover_cuts(n, cstrData, lift_covers)
-					n.nbcover += 1
-				else
-					n.nbcover = 8
-				end
-				return process_node_stidsen(n, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
-			else
-				n1, n2 = basicbranch(n)
-				push!(S, n1)
-				push!(S, n2)
-			end
+			n1, n2 = basicbranch(n)
+			push!(S, n1)
+			push!(S, n2)
 		end
 	end
 end

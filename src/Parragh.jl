@@ -150,6 +150,17 @@ function groupby_continuous(v)
 	res
 end
 
+function apply_cuts!(n::NodeParragh, cstrData, lift_covers, nb_try = 15)
+	for i = 1:nb_try
+		res = @suppress solve(n.m, method=:dicho, relax=true)
+		res != :Optimal && return
+		n.x = [[round(getvalue(JuMP.Variable(n.m, i), j), 8) for i = 1:n.m.numCols] for j = 1:length(getY_N(n.m))]
+		success = find_cover_cuts(n, cstrData, lift_covers)
+		!success && return
+	end
+	return
+end
+
 function solve_parragh(model, limit=Inf ;  showplot = false, docovercuts = true, global_branch = false, use_nsga = true, global_nsga = true, lift_covers = false)
 	
 	vm = copy(model)
@@ -240,6 +251,8 @@ function solve_parragh(model, limit=Inf ;  showplot = false, docovercuts = true,
 
 		#Stack of nodes to evaluate
 		S = [NodeParragh(m, bound1, bound2, cstr1, cstr2)]
+
+		apply_cuts!(S[1], cstrData, lift_covers)
 		
 		#Solve while there are nodes to process
 		cpt = 0
@@ -322,14 +335,6 @@ function process_node_parragh(n::NodeParragh, S, sense, LN, obj1, obj2, LNGlobal
 		if new_int_found
 			# println("int found -> pareto-branching")
 			push!(S, parragh_branch(n, first(filteredDual), obj1, obj2))
-		elseif docovercuts && n.nbcover <= 7
-			if isempty(n.f1) && isempty(n.f0) && find_cover_cuts(n, cstrData, lift_covers)
-				n.nbcover += 1
-			else
-				n.nbcover = 8
-			end
-			# println("tried cover cuts")
-			return process_node_parragh(n, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
 		else
 			#branch classique
 			# println("branch classique")

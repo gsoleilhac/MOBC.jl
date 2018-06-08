@@ -1,4 +1,4 @@
-struct ConstraintData
+mutable struct ConstraintData
     nb_cstr::Int
     indices::Vector{Vector{Int}}
     coeffs::Vector{Vector{Float64}}
@@ -6,13 +6,27 @@ struct ConstraintData
     ub::Vector{Float64}
 end
 
-ConstraintData(m) = ConstraintData(
-    length(m.linconstr),
-    [map(v-> getfield(v, :col), CSTR.terms.vars) for CSTR in m.linconstr], 
-    [CSTR.terms.coeffs for CSTR in m.linconstr], 
-    [CSTR.lb for CSTR in m.linconstr], 
-    [CSTR.ub for CSTR in m.linconstr]
-)
+function ConstraintData(m)
+    res = ConstraintData(
+            length(m.linconstr),
+            [map(v-> getfield(v, :col), CSTR.terms.vars) for CSTR in m.linconstr], 
+            [CSTR.terms.coeffs for CSTR in m.linconstr], 
+            [CSTR.lb for CSTR in m.linconstr], 
+            [CSTR.ub for CSTR in m.linconstr])
+
+    to_discard = find(x-> x<=0 || x==Inf, res.ub)
+    
+    if !isempty(to_discard)
+        res.nb_cstr = res.nb_cstr - length(to_discard)
+        deleteat!(res.indices, to_discard)
+        deleteat!(res.coeffs, to_discard)
+        deleteat!(res.lb, to_discard)
+        deleteat!(res.ub, to_discard)
+    end
+
+    res
+end
+
 
 isacover(C, a, b) = sum(a[C]) > b
 
@@ -69,29 +83,20 @@ end
 function find_cover_cuts(n::Node, cstrData, lift_covers)
     success = false
     for i = 1:cstrData.nb_cstr
-        if cstrData.ub[i] > 0 && cstrData.lb[i] == -Inf && cstrData.ub[i] != Inf
-            inds = setdiff(cstrData.indices[i], union(n.f0, n.f1)) #indices of unfixed variables involved in the constraint
-            x = view(n.m.colVal, inds) #value of those variables in the current solution
-            a = cstrData.coeffs[i][in.(cstrData.indices[i], (inds,))] #coefficients of those variables in the current constraint
-            b = cstrData.ub[i] #RHS of the constraint
-
-            # Remove the sum of coeffs of variables already fixed to 1 from the RHS
-            for j = 1:length(cstrData.indices[i])
-                if cstrData.indices[i][j] in n.f1
-                    b -= cstrData.coeffs[i][j]
-                end
-            end
-            
-            if dot(x, a) > b - 1e-4 #if the constraint is activated                
-                C, card = separateHeur(x, a, b) #try to find a cover
-                if !isempty(C) #if success, add it to the list of cover cuts
-                    success = true
-                    if lift_covers && isastrongcover(C, inds, a, b)
-                        res = lifting_procedure(C, inds, a, b, card)
-                        @constraint(n.m, dot([JuMP.Variable(n.m, j) for j in inds], res) <= card)
-                    else
-                        @constraint(n.m, sum(JuMP.Variable(n.m, j) for j in inds[extend(C, a)]) <= card)
-                    end
+        inds = cstrData.indices[i] #indices of variables involved in the constraint
+        x = view(n.m.colVal, inds) #value of the variables in the current solution
+        a = cstrData.coeffs[i] #coefficients of the variables in the current constraint
+        b = cstrData.ub[i] #RHS of the constraint
+        
+        if dot(x, a) > b - 1e-4 #if the constraint is activated                
+            C, card = separateHeur(x, a, b) #try to find a cover
+            if !isempty(C) #if success, add it to the list of cover cuts
+                success = true
+                if lift_covers && isastrongcover(C, inds, a, b)
+                    res = lifting_procedure(C, inds, a, b, card)
+                    @constraint(n.m, dot([JuMP.Variable(n.m, j) for j in inds], res) <= card)
+                else
+                    @constraint(n.m, sum(JuMP.Variable(n.m, j) for j in inds[extend(C, a)]) <= card)
                 end
             end
         end
@@ -104,32 +109,25 @@ function find_cover_cuts(n::NodeParragh, cstrData, lift_covers)
     lifted_cuts = Set{Tuple{Vector{Int}, Vector{Int}, Int}}()
     success = false
     for i = 1:cstrData.nb_cstr
-        if cstrData.ub[i] > 0 && cstrData.lb[i] == -Inf && cstrData.ub[i] != Inf
-            inds = setdiff(cstrData.indices[i], union(n.f0, n.f1)) #indices of unfixed variables involved in the constraint
-            a = cstrData.coeffs[i][in.(cstrData.indices[i], (inds,))] #coefficients of those variables in the current constraint
-            b = cstrData.ub[i] #RHS of the constraint
-            # Remove the sum of coeffs of variables already fixed to 1 from the RHS
-            for j = 1:length(cstrData.indices[i])
-                if cstrData.indices[i][j] in n.f1
-                    b -= cstrData.coeffs[i][j]
-                end
-            end
+        inds = cstrData.indices[i] #indices of variables involved in the constraint
+        a = cstrData.coeffs[i] #coefficients of thothese variables in the current constraint
+        b = cstrData.ub[i] #RHS of the constraint
 
-            for ind_x in 1:length(n.x) #for each solution of the convex linear relaxation
-                x =  view(n.x[ind_x], inds) #value of those variables in the solution
-                
-                if dot(x, a) > b - 1e-4 #if the constraint is activated                
-                    C, card = separateHeur(x, a, b) #try to find a cover
-                    if !isempty(C) #if success, add it to the list of cover cuts
-                        success = true
-                        if lift_covers && isastrongcover(C, inds, a, b)
-                            res = lifting_procedure(C, inds, a, b, card)
-                            push!(lifted_cuts, (inds, res, card))
-                            # @constraint(n.m, dot([JuMP.Variable(n.m, j) for j in inds], res) <= card)
-                        else
-                            push!(cuts, (inds[extend(C, a)], card))
-                            # @constraint(n.m, sum(JuMP.Variable(n.m, j) for j in inds[extend(C, a)]) <= card)
-                        end
+        for ind_x in 1:length(n.x) #for each solution of the convex linear relaxation
+            x =  view(n.x[ind_x], inds) #value of the variables in the solution
+            
+            if dot(x, a) > b - 1e-4 #if the constraint is activated                
+                C, card = separateHeur(x, a, b) #try to find a cover
+                if !isempty(C) #if success, add it to the list of cover cuts
+                    success = true
+                    if lift_covers && isastrongcover(C, inds, a, b)
+                        res = lifting_procedure(C, inds, a, b, card)
+                        @show maximum(res)
+                        push!(lifted_cuts, (inds, res, card))
+                        # @constraint(n.m, dot([JuMP.Variable(n.m, j) for j in inds], res) <= card)
+                    else
+                        push!(cuts, (inds[extend(C, a)], card))
+                        # @constraint(n.m, sum(JuMP.Variable(n.m, j) for j in inds[extend(C, a)]) <= card)
                     end
                 end
             end
@@ -147,16 +145,19 @@ function find_cover_cuts(n::NodeParragh, cstrData, lift_covers)
 end
 
 function lifting_procedure(C, inds, a, b, card)
+    sorted_Ci = sort(C, by = x->a[x], rev=true)
     sorted_ECi = sort(extend(C, a), by = x->a[x], rev=true)
     q = card
     n0 = setdiff(1:length(a), sorted_ECi)
     aj = ones(Int, length(a))
     aj[n0] .= 0
 
-    lb, ub = 0, a[sorted_ECi[1]]
+    lb = a[sorted_Ci[1]]
+    ub = lb + a[sorted_Ci[2]]
     for h = 2:q
-        lb += a[sorted_ECi[h]]
-        ub += a[sorted_ECi[h+1]]
+        lb += a[sorted_Ci[h]]
+        ub += a[sorted_Ci[h+1]]
+        maximum(a) < lb && break
         nh = find(x-> lb <= x < ub, a)
         aj[nh] .= h
     end

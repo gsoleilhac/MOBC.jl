@@ -5,7 +5,7 @@ function benchmark( ; fig1 = 1, fig2 = 2, args...)
 	res_stidsen=Dict{Int, Vector{Float64}}() ; nb_nodes_stidsen=Dict{Int, Vector{Int}}()
 	res_parragh=Dict{Int, Vector{Float64}}() ; nb_nodes_parragh=Dict{Int, Vector{Int}}()
 	res_eps=Dict{Int, Vector{Float64}}()
-	for filename in ("gap1.txt", "gap2.txt")
+	for filename in ("gap1.txt",)# "gap2.txt")
 		filepath = joinpath(Pkg.dir("MOBC"), "test", "Instances_gap", "gap_orlib", filename)
 		instances = parseGAP_orlib(filepath)
 		n = instances[1].m.numCols

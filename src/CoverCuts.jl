@@ -67,7 +67,6 @@ function separateHeur(x, a, b)
 end
 
 function find_cover_cuts(n::Node, cstrData, lift_covers)
-    cuts = Tuple{Vector{Int}, Int}[]
     success = false
     for i = 1:cstrData.nb_cstr
         if cstrData.ub[i] > 0 && cstrData.lb[i] == -Inf && cstrData.ub[i] != Inf
@@ -158,7 +157,7 @@ function lifting_procedure(C, inds, a, b, card)
     for h = 2:q
         lb += a[sorted_ECi[h]]
         ub += a[sorted_ECi[h+1]]
-        nh = find(x-> lb <= x <= ub, a)
+        nh = find(x-> lb <= x < ub, a)
         aj[nh] .= h
     end
 

@@ -1,5 +1,6 @@
-function solve_stidsen(vm, limit=Inf ;  showplot = false, docovercuts = true , global_branch = false, use_nsga = true, global_nsga = true, lift_covers = false)
+function solve_stidsen(model, limit=Inf ;  showplot = false, docovercuts = true , global_branch = false, use_nsga = true, global_nsga = true, lift_covers = false)
 
+	vm = copy(model)
 	vd = getvOptData(vm)
 	@assert length(vd.objs) == 2
 	@assert all(isonlybinary.(vm, vd.objs))
@@ -275,7 +276,7 @@ end
 function basicbranch(n)
 	i = indmax(map(x->x>0.5 ? 1-x : x, n.x))
 	n1, n2 = shallowcopy(n), shallowcopy(n)
-	push!(n1.f1, i)
 	push!(n2.f0, i)
+	push!(n1.f1, i)
 	n1, n2
 end

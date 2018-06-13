@@ -45,7 +45,7 @@ function isminimal(C, a, b)
     sum(a[C]) - minimum(a[C]) <= b
 end
 
-function isastrongcover(C, inds, a, b)
+function isastrongcover(C, a, b)
     !isminimal(C, a, b) && return false
     EC = extend(C, a)
     length(EC) == length(a) && return true
@@ -88,13 +88,22 @@ function find_cover_cuts(n::Node, cstrData, lift_covers)
         a = cstrData.coeffs[i] #coefficients of the variables in the current constraint
         b = cstrData.ub[i] #RHS of the constraint
         
-        if dot(x, a) > b - 1e-4 #if the constraint is activated                
+        if dot(x, a) > b - 2.5 #if the constraint is activated                
             C, card = separateHeur(x, a, b) #try to find a cover
             if !isempty(C) #if success, add it to the list of cover cuts
                 success = true
-                if lift_covers && isastrongcover(C, inds, a, b)
-                    res = lifting_procedure(C, inds, a, b, card)
-                    @constraint(n.m, dot([JuMP.Variable(n.m, j) for j in inds], res) <= card)
+                if lift_covers
+                    if isastrongcover(C, a, b)
+                        res = lifting_procedure(C, a, b, card)
+                        @constraint(n.m, dot([JuMP.Variable(n.m, j) for j in inds], res) <= card)
+                    else
+                        if lifting_procedure_M2!(C, a, b)
+                            res = lifting_procedure(C, a, b, card)
+                            @constraint(n.m, dot([JuMP.Variable(n.m, j) for j in inds], res) <= card)
+                        else
+                            @constraint(n.m, sum(JuMP.Variable(n.m, j) for j in inds[extend(C, a)]) <= card)
+                        end
+                    end
                 else
                     @constraint(n.m, sum(JuMP.Variable(n.m, j) for j in inds[extend(C, a)]) <= card)
                 end
@@ -120,10 +129,18 @@ function find_cover_cuts(n::NodeParragh, cstrData, lift_covers)
                 C, card = separateHeur(x, a, b) #try to find a cover
                 if !isempty(C) #if success, add it to the list of cover cuts
                     success = true
-                    if lift_covers && isastrongcover(C, inds, a, b)
-                        res = lifting_procedure(C, inds, a, b, card)
-                        @show maximum(res)
-                        push!(lifted_cuts, (inds, res, card))
+                    if lift_covers 
+                        if isastrongcover(C, a, b)
+                            res = lifting_procedure(C,  a, b, card)
+                            push!(lifted_cuts, (inds, res, card))
+                        else
+                            if lifting_procedure_M2!(C, a, b)
+                                res = lifting_procedure(C, a, b, card)
+                                push!(lifted_cuts, (inds, res, card))
+                            else
+                                push!(cuts, (inds[extend(C, a)], card))
+                            end
+                        end
                         # @constraint(n.m, dot([JuMP.Variable(n.m, j) for j in inds], res) <= card)
                     else
                         push!(cuts, (inds[extend(C, a)], card))
@@ -144,7 +161,7 @@ function find_cover_cuts(n::NodeParragh, cstrData, lift_covers)
    success
 end
 
-function lifting_procedure(C, inds, a, b, card)
+function lifting_procedure(C, a, b, card)
     sorted_Ci = sort(C, by = x->a[x], rev=true)
     sorted_ECi = sort(extend(C, a), by = x->a[x], rev=true)
     q = card
@@ -164,4 +181,33 @@ function lifting_procedure(C, inds, a, b, card)
 
     return aj
 
+end
+
+
+function lifting_procedure_M2!(C, a, b)
+    EC = extend(C, a)
+    N_minus_EC = setdiff(1:length(a), EC)
+    isempty(N_minus_EC) && return false
+    aij1, j1 = findmax(a[C])
+    aij2 = maximum(a[N_minus_EC])
+    temp = copy(a)
+    Δ = sum(a[C]) - aij1 + aij2 - b
+    while Δ > 0
+        deleteat!(C, j1)
+        copyto!(temp, a)
+        temp[EC] .= typemax(Int)
+        temp[temp .<= (aij2 - Δ)] .= typemax(Int)
+        j = indmin(temp)
+        push!(C, j) ; sort!(C)
+        EC = extend(C, a)
+        if length(EC) == length(a)
+            isastrongcover(C, a, b) && return true
+            return false
+        end
+        N_minus_EC = setdiff(1:length(a), EC)
+        aij1, j1 = findmax(a[C])
+        aij2 = maximum(a[N_minus_EC])
+        Δ = sum(a[C]) - aij1 + aij2 - b 
+    end
+    true
 end

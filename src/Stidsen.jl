@@ -108,7 +108,6 @@ function solve_stidsen(model, limit=Inf ;  showplot = false, docovercuts = true 
 
 	end
 
-
 	resxe = unique(resxe)
 	YN = [(evaluate(x, vd.objs[1]), evaluate(x, vd.objs[2])) for x in resxe]
 
@@ -273,14 +272,13 @@ function paretobranch(sense::Type{Max}, n, z1, z2, LN, obj1, obj2, showplot)
 		push!(res, n2)
 	end
 	showplot && plot_pareto_branch(LN, z1, z2, boundz1, boundz2, sleeptime=0.01)
-	#@assert length(res) >= 1
 	res
 end
 
 function basicbranch(n)
 	i = indmax(map(x->x>0.5 ? 1-x : x, n.x))
 	n1, n2 = shallowcopy(n), shallowcopy(n)
-	push!(n2.f0, i)
-	push!(n1.f1, i)
+	push!(n1.f0, i)
+	push!(n2.f1, i)
 	n1, n2
 end

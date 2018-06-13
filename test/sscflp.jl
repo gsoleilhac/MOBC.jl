@@ -30,13 +30,13 @@ function parseSSCFLP(fname, solver = CplexSolver(CPX_PARAM_SCRIND = 0))
     m
 end
 
-for folder in ["size_5_10"]#, "size_10_20"]#, "size_15_30"]
+for folder in ["size_5_10", "size_10_20"]#, "size_15_30"]
     cd(joinpath(Pkg.dir("MOBC"), "test", "Instances_SSCFLP", folder)) do
         for file in readdir()
             m = parseSSCFLP(file)
             println(file)
-            @time solve_stidsen(m, use_nsga=false)
-            @time solve_parragh(m, use_nsga=false)
+            @time solve_stidsen(m, use_nsga=true, global_branch=false, docovercuts=true, lift_covers=true)
+            @time solve_parragh(m, use_nsga=true, global_branch=false, docovercuts=true, lift_covers=true)
             @time solve(m, method=:epsilon, round_results=true, verbose=false, suppress_warnings=true)
         end
     end

@@ -51,7 +51,8 @@ function benchmark(itemrange, nrange, runpersize ; args...)
 			rng += 1
 			global m_current = m
 			valBC, tBC, _ = @timed solve_stidsen(m, Inf ; args...);
-			valPAR, tPAR, _ = @timed solve_parragh(m, Inf ; args...);
+			#valPAR, tPAR, _ = @timed solve_parragh(m, Inf ; args...);
+			valPAR, tPAR = valBC, tBC
 			status,tEPS,_ = @suppress @timed solve(m, method=:epsilon, round_results=true);
 			if !(length(getY_N(m)) == length(unique(valBC.YN)) == length(unique(valPAR.YN)))
 				print(m)
@@ -100,7 +101,7 @@ function benchmark(itemrange, nrange, runpersize ; args...)
 	res_stidsen, res_parragh, res_eps, nb_nodes_stidsen, nb_nodes_parragh
 end
 
-benchmark(1:20, 10:11, 1, use_nsga=true, global_branch=false, docovercuts=true)
+benchmark(1:15, 10:11, 1, use_nsga=true, global_branch=false, docovercuts=true, lift_covers=true)
 # inst = hard_instance2(CplexSolver(CPX_PARAM_SCRIND = 0))
 srand(0)
-benchmark(1:20, 10:5:40, 5, use_nsga=true, global_branch=false, docovercuts=true)
+benchmark(1:15, 10:5:40, 5, use_nsga=true, global_branch=false, docovercuts=true, lift_covers=true)

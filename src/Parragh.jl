@@ -257,7 +257,7 @@ function solve_parragh(model, limit=Inf ;  showplot = false, docovercuts = true,
 		#Solve while there are nodes to process
 		cpt = 0
 		while !isempty(S) && cpt < limit
-			# sort!(S, by = x->x.zparent, rev=(sense==Min))
+			sort!(S, by = x->x.z_avg, rev=(sense==Min))
 			process_node_parragh(pop!(S), S, sense, LN, Ƶ1, Ƶ2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
 			nbNodesTotal += 1
 			cpt += 1
@@ -269,7 +269,6 @@ function solve_parragh(model, limit=Inf ;  showplot = false, docovercuts = true,
 		append!(resyn, LN.yn)
 
 	end
-
 
 	resxe = unique(resxe)
 	YN = [(evaluate(x, vd.objs[1]), evaluate(x, vd.objs[2])) for x in resxe]
@@ -287,6 +286,7 @@ function process_node_parragh(n::NodeParragh, S, sense, LN, obj1, obj2, LNGlobal
 	res != :Optimal && return
 	
 	YN_relax = getY_N(n.m)
+	n.z_avg = mean(x -> LN.λ[1]*x[1] + LN.λ[2]*x[2], YN_relax)
 	n.x = [[round(getvalue(JuMP.Variable(n.m, i), j), 8) for i = 1:n.m.numCols] for j = 1:length(YN_relax)]
     
 	new_int_found = false
@@ -356,7 +356,6 @@ function parragh_branch(n, segmentList::Vector{Segment{T}}, obj1, obj2) where T
 	boundz1, boundz2 = nadir(segmentList)
 
 	if T == Max
-		@assert boundz1 > n.bound1 || boundz2 > n.bound2
 		node.bound1 = max(node.bound1, boundz1)
 		node.bound2 = max(node.bound2, boundz2)
 	else
@@ -384,8 +383,8 @@ function basicbranch_parragh(n, dualbound)
 
 	n1, n2 = shallowcopy(n), shallowcopy(n)
 
-	push!(n1.f1, ind)
-	push!(n2.f0, ind)
+	push!(n1.f0, ind)
+	push!(n2.f1, ind)
 
 	# println("branching on variable $ind")
 	n1, n2

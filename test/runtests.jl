@@ -104,4 +104,4 @@ end
 benchmark(1:15, 10:11, 1, use_nsga=true, global_branch=false, docovercuts=true, lift_covers=true)
 # inst = hard_instance2(CplexSolver(CPX_PARAM_SCRIND = 0))
 srand(0)
-benchmark(1:15, 10:5:40, 5, use_nsga=true, global_branch=false, docovercuts=true, lift_covers=true)
+benchmark(1:15, 10:5:40, 5, use_nsga=true, global_branch=false, docovercuts=true, lift_covers=false)

@@ -32,9 +32,9 @@ function solve_stidsen(model, limit=Inf ;  showplot = false, docovercuts = true 
 		modelnsga.ext[:vOpt].objs = [z1, z2]
 
 		if global_nsga
-			ns = nsga_binary(50, 500, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
+			ns = nsga_binary(40, 500, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
 		else
-			ns = union((nsga_binary(50, 200, modelnsga, seed=[XE_convex[i], XE_convex[i+1]], pmut=0.3, showprogress=false) for i = 1:length(XE_convex)-1)...)
+			ns = union((nsga_binary(20, 500, modelnsga, seed=[XE_convex[i], XE_convex[i+1]], pmut=0.3, showprogress=false) for i = 1:length(XE_convex)-1)...)
 			#if we do one nsga per triangle, we can have dominated solutions here.
 			NSGAII.fast_non_dominated_sort!(ns, sense==Max ? NSGAII.Max() : NSGAII.Min())
 			filter!(x->x.rank == 1, ns)
@@ -91,6 +91,8 @@ function solve_stidsen(model, limit=Inf ;  showplot = false, docovercuts = true 
 		S = [Node(m, bound1, bound2, cstr1, cstr2)]
 
 		apply_cuts!(S[1], cstrData, lift_covers)
+
+		preprocess(S[1], LN, Ƶ1, Ƶ2)
 
 		#Solve while there are nodes to process
 		cpt = 0
@@ -150,6 +152,33 @@ function apply_cuts!(n::Node, cstrData, lift_covers, nb_try = 15)
 	return
 end
 
+function preprocess!(n::Node, LN, obj1, obj2)
+	for i = 1:n.m.numCols
+		setlowerbound(JuMP.Variable(n.m, i), 1.)
+		res = solve(n.m, ignore_solve_hook=true, relaxation=true, suppress_warnings=true)
+		n.x = round.(n.m.colVal, 8)
+		n.z = round(getobjectivevalue(n.m), 8)
+		z1, z2 = evaluate(n.x, obj1), evaluate(n.x, obj2)
+		setlowerbound(JuMP.Variable(n.m, i), 0.)
+		setupperbound(JuMP.Variable(n.m, i), 0.)
+		if isfathomable(n.z, LN)
+			println("fixed variable $i to 0")
+			push!(n.f0, i)
+		else
+			res = solve(n.m, ignore_solve_hook=true, relaxation=true, suppress_warnings=true)
+			n.x = round.(n.m.colVal, 8)
+			n.z = round(getobjectivevalue(n.m), 8)
+			z1, z2 = evaluate(n.x, obj1), evaluate(n.x, obj2)
+			setupperbound(JuMP.Variable(n.m, i), 1.)
+			if isfathomable(n.z, LN)
+				println("fixed variable $i to 1")
+				setlowerbound(JuMP.Variable(n.m, i), 1.)
+				push!(n.f1, i)
+			else
+			end
+		end
+	end
+end
 
 function process_node_stidsen(n::Node, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
 
@@ -157,7 +186,7 @@ function process_node_stidsen(n::Node, S, sense, LN, obj1, obj2, LNGlobal, cstrD
 
 	fix_variables!(n)
 	setRHS!(n)
-	res = @suppress solve(n.m, ignore_solve_hook=true, relaxation=true)
+	res = solve(n.m, ignore_solve_hook=true, relaxation=true, suppress_warnings=true)
 	unfix_variables!(n)
 
 	res != :Optimal && return

@@ -10,6 +10,7 @@ include("ParserGAP.jl")
 include("Stidsen.jl")
 include("Parragh.jl")
 include("Plots.jl")
+include("RCNP.jl")
 
 isonlybinary(m, obj) = all(m.colCat[map(x->getfield(x, :col), obj.aff.vars)] .== :Bin)
 isbinary(x) = all(y-> y==1. || y==0., x)

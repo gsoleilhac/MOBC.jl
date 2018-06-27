@@ -1,4 +1,3 @@
-
 slices(n) = 1./tan.(linspace(0,π/2,n+2)[2:end-1])
 
 function RCNP(::Type{Min}, m, α, Ƶ1, Ƶ2)

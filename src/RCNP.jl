@@ -81,3 +81,76 @@ function RCNP(::Type{Max}, m, α, Ƶ1, Ƶ2)
 	println("###")
 	return Nullable((xA,zA)), Nullable((xB,zB))
 end
+
+
+function select_slices(YN, k)
+	K = length(YN)
+	@assert k <= K÷2
+	G = OffsetArray(Vector{Int}, 0:k)
+	G[0] = [0]
+	G[k] = [K-1]
+	for i = 1:k-1
+		G[i] = collect(2i-1:K-2k+2i-1)
+	end
+	@show G
+	
+	d = Dict{Tuple{Int,Int}, Int}()
+	for col = 0:k-1
+		for i in G[col] .+ 1
+			for j in G[col+1] .+ 1
+				if col == 0
+					d[i,j] = abs((YN[i][1]-YN[j][1]) * (YN[i][2]-YN[j][2]))
+				else	
+					if j >= i+2
+						d[i,j] = abs((YN[i+1][1]-YN[j][1]) * (YN[i+1][2]-YN[j][2]))
+					end
+				end
+			end
+		end
+	end
+	
+	m = Model(solver = CplexSolver(CPX_PARAM_SCRIND = 0))
+	@variable(m, x[keys(d)], Bin)
+	@variable(m, wmax, Int) 
+
+	@objective(m, Min, wmax)
+
+	edges_1_x = Iterators.filter(x->first(x)==1, keys(d))
+	edges_x_K = Iterators.filter(x->last(x)==K, keys(d))
+
+	@constraint(m, sum(x[e] for e in edges_1_x) == 1)
+	@constraint(m, sum(x[e] for e in edges_x_K) == 1)
+	@constraint(m, [i = keys(d)], wmax >= x[i]*d[i])
+	@constraint(m, sum(x) == k)
+	for i = 2:K-1
+		in_edges = Iterators.filter(x->last(x)==i, keys(d))
+		out_edges = Iterators.filter(x->first(x)==i, keys(d))
+		@constraint(m, sum(x[j] for j in in_edges) == sum(x[l] for l in out_edges))
+	end
+	
+	@show solve(m)
+	@show getobjectivevalue(m)
+
+	x_res = getvalue(x)
+
+	res=Int[]
+	i = 1
+	j = 2
+	while j != K
+		if i==1 && j==2 && x_res[(i,j)] == 1.
+			push!(res, 2)
+			i=2
+		elseif length(res) == k-1
+			@assert x_res[(i,K)] == 1 res
+			push!(res, K)
+			j = K
+		else
+			j = findfirst(x->x_res[(i,x)]==1, (i+2):K) + (i+1)
+			push!(res, j)
+			i = j
+		end
+	end
+	res
+
+
+end

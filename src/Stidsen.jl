@@ -92,7 +92,7 @@ function solve_stidsen(model, limit=Inf ;  showplot = false, docovercuts = true 
 
 		apply_cuts!(S[1], cstrData, lift_covers)
 
-		preprocess(S[1], LN, Ƶ1, Ƶ2)
+		preprocess!(S[1], LN, Ƶ1, Ƶ2)
 
 		#Solve while there are nodes to process
 		cpt = 0

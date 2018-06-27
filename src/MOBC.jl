@@ -1,5 +1,5 @@
 module MOBC
-using JuMP, vOptGeneric, PyPlot, NSGAII, Suppressor, NamedTuples, Nullables, Compat, ProgressMeter
+using JuMP, vOptGeneric, PyPlot, NSGAII, Suppressor, NamedTuples, Nullables, Compat, ProgressMeter, OffsetArrays
 
 export solve_stidsen, solve_parragh, parseGAP, parseGAP_orlib
 

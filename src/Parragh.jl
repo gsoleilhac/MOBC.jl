@@ -150,7 +150,7 @@ function groupby_continuous(v)
 	res
 end
 
-function apply_cuts!(n::NodeParragh, cstrData, lift_covers, nb_try = 15)
+function apply_cuts!(n::NodeParragh, cstrData, lift_covers, nb_try = 20)
 	for i = 1:nb_try
 		res = @suppress solve(n.m, method=:dicho, relax=true)
 		res != :Optimal && return
@@ -161,8 +161,9 @@ function apply_cuts!(n::NodeParragh, cstrData, lift_covers, nb_try = 15)
 	return
 end
 
-function solve_parragh(model, limit=Inf ;  showplot = false, docovercuts = true, global_branch = false, use_nsga = true, global_nsga = true, lift_covers = false)
+function solve_parragh(model ;  showplot = false, docovercuts = true, global_branch = false, use_nsga = true, global_nsga = true, lift_covers = true, time_limit=300, fill_triangles=true, preprocess=true)
 	
+	tic()
 	vm = copy(model)
 	vd = getvOptData(vm)
 	@assert length(vd.objs) == 2
@@ -195,35 +196,49 @@ function solve_parragh(model, limit=Inf ;  showplot = false, docovercuts = true,
 		modelnsga.ext[:vOpt].objs = [z1, z2]
 
 		if global_nsga
-			ns = nsga(50, 500, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
+			ns = nsga_binary(50, 1000, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
 		else
-			ns = union((nsga(100, 200, modelnsga, seed=[XE_convex[i], XE_convex[i+1]], pmut=0.3, showprogress=false) for i = 1:length(XE_convex)-1)...)
+			ns = union((nsga_binary(20, 500, modelnsga, seed=[XE_convex[i], XE_convex[i+1]], pmut=0.3, showprogress=false) for i = 1:length(XE_convex)-1)...)
 			#if we do one nsga per triangle, we can have dominated solutions here.
 			NSGAII.fast_non_dominated_sort!(ns, sense==Max ? NSGAII.Max() : NSGAII.Min())
 			filter!(x->x.rank == 1, ns)
 		end
+		
 		ns = unique(x->x.y, ns)
 		sort!(ns, by=x->x.y[1])
 		LN_NSGA = NonDomPoints(sense, map(x->x.pheno, ns), map(x->Tuple(x.y), ns))
+		
+		if fill_triangles
+			diffs = [YN_convex[i] .- YN_convex[i+1] for i = 1:length(YN_convex)-1]
+			areas = abs.(map(prod, diffs))
+			while maximum(areas) > 2*mean(areas)
+				i = indmax(areas)
+				list_to_add = filter!(x-> YN_convex[i][1] < x.y[1] < YN_convex[i+1][1], ns)
+				isempty(list_to_add) && break
+				sol_to_add = list_to_add[length(list_to_add)÷2 + 1]
+				insert!(YN_convex, i+1, sol_to_add.y)
+				insert!(XE_convex, i+1, sol_to_add.pheno)
+				diffs = [YN_convex[i] .- YN_convex[i+1] for i = 1:length(YN_convex)-1]
+				areas = abs.(map(prod, diffs))
+			end
+		end
 	end
 
-	resxe = Vector{Int}[]
-	resyn = Tuple{Int,Int}[]
+	t = toq()
 
 	nbNodesTotal = 0
+	LNGlobal = use_nsga ? LN_NSGA :  NonDomPoints(sense, XE_convex, Tuple.(YN_convex))
 
 	for i = 1:length(YN_convex)-1
 
+		t > time_limit && break
+		tic()
+
+		# println("exploring triangle ◬ ($(YN_convex[i]) - $(YN_convex[i+1])) area : $(areas[i])")
+
 		m = copy(vm)
 		LN = NonDomPoints(sense, [XE_convex[i], XE_convex[i+1]], [Tuple(YN_convex[i]), Tuple(YN_convex[i+1])])
-		LNGlobal = use_nsga ? LN_NSGA : LN #for plots
-		
-		if abs(LN.yn[1][1]-LN.yn[end][1]) == 1 || abs(LN.yn[1][2]-LN.yn[end][2]) == 1
-			append!(resxe, LN.xe)
-			append!(resyn, LN.yn)
-			continue
-		end
-
+	
 		if use_nsga
 			for j = 1:length(LN_NSGA.yn)
 				if LN.yn[1][1] < LN_NSGA.yn[j][1] < LN.yn[end][1] 
@@ -233,8 +248,8 @@ function solve_parragh(model, limit=Inf ;  showplot = false, docovercuts = true,
 		end
 
 		Ƶ1, Ƶ2 = copy(z1, m), copy(z2, m)
-		# Ƶ = LN.λ[1]*Ƶ1 + LN.λ[2]*Ƶ2
-		# JuMP.setobjective(m, vd.objSenses[1], Ƶ.aff)
+		Ƶ = LN.λ[1]*Ƶ1 + LN.λ[2]*Ƶ2
+		JuMP.setobjective(m, vd.objSenses[1], Ƶ.aff)
 
 		if sense == Max
 			bound1 = LN.yn[1][1] + 1
@@ -251,33 +266,37 @@ function solve_parragh(model, limit=Inf ;  showplot = false, docovercuts = true,
 
 		#Stack of nodes to evaluate
 		S = [NodeParragh(m, bound1, bound2, cstr1, cstr2)]
-
-		apply_cuts!(S[1], cstrData, lift_covers)
 		
-		#Solve while there are nodes to process
-		cpt = 0
-		while !isempty(S) && cpt < limit
-			sort!(S, by = x->x.z_avg, rev=(sense==Min))
-			process_node_parragh(pop!(S), S, sense, LN, Ƶ1, Ƶ2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
-			nbNodesTotal += 1
-			cpt += 1
+		if docovercuts
+			apply_cuts!(S[1], cstrData, lift_covers)
+		end
+
+		if preprocess
+			preprocess!(S[1], LN, Ƶ1, Ƶ2)
 		end
 		
-		cpt == limit && println("node limit reached")
+		t += toq()
+		#Solve while there are nodes to process
+		cpt = 0
+		while !isempty(S) && t < time_limit
+			tic()
+			sort!(S, by = x->x.z_avg, rev=(sense==Min))
+			process_node_parragh(pop!(S), S, sense, LN, Ƶ1, Ƶ2, LNGlobal, cstrData, showplot)
+			nbNodesTotal += 1
+			cpt += 1
+			t += toq()
+		end
 		
-		append!(resxe, LN.xe)
-		append!(resyn, LN.yn)
+		for i = 1:length(LN.xe)
+			push!(LNGlobal, LN.xe[i], LN.yn[i])
+		end
 
 	end
 
-	resxe = unique(resxe)
-	YN = [(evaluate(x, vd.objs[1]), evaluate(x, vd.objs[2])) for x in resxe]
-
-	# @show cpt
-	return @NT(YN = YN, XE = resxe, nodes = nbNodesTotal)
+	return @NT(YN = LNGlobal.yn	, XE = LNGlobal.xe, nodes = nbNodesTotal, timeout = t > time_limit)
 end
 
-function process_node_parragh(n::NodeParragh, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
+function process_node_parragh(n::NodeParragh, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot)
 
 	fix_variables!(n)
 	setRHS!(n)
@@ -303,7 +322,7 @@ function process_node_parragh(n::NodeParragh, S, sense, LN, obj1, obj2, LNGlobal
 	primal = toPointList(LN.yn)
 	
 	if showplot
-		clf() ; 
+		clf() ;
 		for s in dual
 			plot([s.p1.x, s.p2.x], [s.p1.y, s.p2.y], "g-", linewidth=1)
 			plot([s.p1.x, s.p2.x], [s.p1.y, s.p2.y], "gs", markersize=4)

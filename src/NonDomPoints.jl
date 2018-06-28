@@ -20,6 +20,10 @@ end
 
 function update_ln!(p::NonDomPoints{Max})
 	p.nadirs = [(p.yn[i][1], p.yn[i+1][2]) for i = 1:length(p.yn)-1]
+	if isempty(p.nadirs)
+		p.worst_nadir = p.yn[1].+1
+		return p
+	end
 	p.worst_nadir = p.nadirs[1].+1
 	for n in p.nadirs
 		if sum((n.+1).*p.λ) < sum(p.worst_nadir.*p.λ)
@@ -31,10 +35,14 @@ end
 
 function update_ln!(p::NonDomPoints{Min})
 	p.nadirs = [(p.yn[i+1][1], p.yn[i][2]) for i = 1:length(p.yn)-1]
-	p.worst_nadir = p.nadirs[1].+1
+	if isempty(p.nadirs)
+		p.worst_nadir = p.yn[1].-1
+		return p
+	end
+	p.worst_nadir = p.nadirs[1].-1
 	for n in p.nadirs
-		if sum((n.+1).*p.λ) > sum(p.worst_nadir.*p.λ)
-			p.worst_nadir = n.+1
+		if sum((n.-1).*p.λ) > sum(p.worst_nadir.*p.λ)
+			p.worst_nadir = n.-1
 		end
 	end
 	p
@@ -69,11 +77,14 @@ Base.length(p::NonDomPoints) = length(p.yn)
 
 function Base.push!(p::NonDomPoints{S}, x, y) where S<:Sense
 	#@assert !isweaklydominated(y..., p) "y : $y \n p : $p"
-	!isweaklydominated(y..., p) || return p
+	if isweaklydominated(y..., p)
+		return p
+	end
 	ind = searchsortedfirst(p.yn, y, by = y -> first(y))
 	insert!(p.xe, ind, x)
 	insert!(p.yn, ind, y)
 	inds_delete = find(x->dominates(S, y, x), p.yn)
+	
 	deleteat!(p.xe, inds_delete)
 	deleteat!(p.yn, inds_delete)
 	update_ln!(p)

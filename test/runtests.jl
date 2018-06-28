@@ -38,7 +38,7 @@ function hard_instance(solver=CplexSolver(CPX_PARAM_SCRIND = 0))
     m
 end
 
-function benchmark(itemrange, nrange, runpersize ; args...)
+function benchmark(itemrange, nrange, runpersize ; time_limit=300, args...)
 	rng = 0
 	res_stidsen=Dict{Int, Vector{Float64}}() ; nb_nodes_stidsen=Dict{Int, Vector{Int}}()
 	res_parragh=Dict{Int, Vector{Float64}}() ; nb_nodes_parragh=Dict{Int, Vector{Int}}()
@@ -50,11 +50,13 @@ function benchmark(itemrange, nrange, runpersize ; args...)
 			m = random_instance(itemrange, n, rng)
 			rng += 1
 			global m_current = m
-			valBC, tBC, _ = @timed solve_stidsen(m, Inf ; args...);
-			#valPAR, tPAR, _ = @timed solve_parragh(m, Inf ; args...);
-			valPAR, tPAR = valBC, tBC
-			status,tEPS,_ = @suppress @timed solve(m, method=:epsilon, round_results=true);
-			if !(length(getY_N(m)) == length(unique(valBC.YN)) == length(unique(valPAR.YN)))
+			m_copy = copy(m)
+			status,tEPS,_ = @suppress @timed solve(m_copy, method=:epsilon, round_results=true);
+			valBC, tBC, _ = @timed solve_stidsen(m ; time_limit=time_limit, args...);
+			valPAR, tPAR, _ = @timed solve_parragh(m ; time_limit=time_limit, args...);
+			
+
+			if (!(valBC.timeout) && length(getY_N(m_copy)) != length(valBC.YN)) || (!(valPAR.timeout) && length(valPAR.YN) != length(getY_N(m_copy)))
 				print(m)
 				@show valBC.YN
 				@show valPAR.YN
@@ -67,9 +69,10 @@ function benchmark(itemrange, nrange, runpersize ; args...)
 				legend()
 				error()
 			end
-
-			push!(res_stidsen[n], tBC) ; push!(res_parragh[n], tPAR) ; push!(res_eps[n], tEPS)
-			push!(nb_nodes_parragh[n], valPAR.nodes) ; push!(nb_nodes_stidsen[n], valBC.nodes)
+			
+			push!(res_stidsen[n], valBC.timeout ? time_limit : tBC) ; push!(res_parragh[n], valPAR.timeout ? time_limit : tPAR) ; push!(res_eps[n], tEPS)
+			!(valPAR.timeout) && push!(nb_nodes_parragh[n], valPAR.nodes)
+			!(valBC.timeout) && push!(nb_nodes_stidsen[n], valBC.nodes)
 
 			figure(1) ; clf()
 			xlabel("n") ; ylabel("t(s)") ; title("time per instance")
@@ -101,7 +104,7 @@ function benchmark(itemrange, nrange, runpersize ; args...)
 	res_stidsen, res_parragh, res_eps, nb_nodes_stidsen, nb_nodes_parragh
 end
 
-benchmark(1:15, 10:11, 1, use_nsga=true, global_branch=false, docovercuts=true, lift_covers=true)
+benchmark(1:20, 10:11, 1, use_nsga=true, global_branch=false, docovercuts=true, lift_covers=true)
 # inst = hard_instance2(CplexSolver(CPX_PARAM_SCRIND = 0))
 srand(0)
-benchmark(1:15, 10:5:40, 5, use_nsga=true, global_branch=false, docovercuts=true, lift_covers=false)
+benchmark(1:20, 10:5:100, 5, use_nsga=true, global_branch=false, docovercuts=true, lift_covers=true, time_limit=300)

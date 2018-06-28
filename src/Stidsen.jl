@@ -1,5 +1,6 @@
-function solve_stidsen(model, limit=Inf ;  showplot = false, docovercuts = true , global_branch = false, use_nsga = true, global_nsga = true, lift_covers = false)
+function solve_stidsen(model ; showplot = false, docovercuts = true , global_branch = false, use_nsga = true, global_nsga = true, lift_covers = true, time_limit=300, fill_triangles=true, preprocess=true)
 
+	tic()
 	vm = copy(model)
 	vd = getvOptData(vm)
 	@assert length(vd.objs) == 2
@@ -16,7 +17,7 @@ function solve_stidsen(model, limit=Inf ;  showplot = false, docovercuts = true 
 
 	YN_convex = map(x->round.(Int, x), getY_N(vm))
 	XE_convex = [[round(getvalue(JuMP.Variable(vm, i), j)) for i = 1:vm.numCols] for j = 1:length(YN_convex)]
-
+	
 	if length(YN_convex) == 1 || YN_convex[1] == YN_convex[end]
 		return @NT(YN = YN_convex, XE = XE_convex, nodes=0)
 	end
@@ -32,7 +33,7 @@ function solve_stidsen(model, limit=Inf ;  showplot = false, docovercuts = true 
 		modelnsga.ext[:vOpt].objs = [z1, z2]
 
 		if global_nsga
-			ns = nsga_binary(40, 500, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
+			ns = nsga_binary(50, 1000, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
 		else
 			ns = union((nsga_binary(20, 500, modelnsga, seed=[XE_convex[i], XE_convex[i+1]], pmut=0.3, showprogress=false) for i = 1:length(XE_convex)-1)...)
 			#if we do one nsga per triangle, we can have dominated solutions here.
@@ -43,24 +44,37 @@ function solve_stidsen(model, limit=Inf ;  showplot = false, docovercuts = true 
 		ns = unique(x->x.y, ns)
 		sort!(ns, by=x->x.y[1])
 		LN_NSGA = NonDomPoints(sense, map(x->x.pheno, ns), map(x->Tuple(x.y), ns))
+		
+		if fill_triangles
+			diffs = [YN_convex[i] .- YN_convex[i+1] for i = 1:length(YN_convex)-1]
+			areas = abs.(map(prod, diffs))
+			while maximum(areas) > 2*mean(areas)
+				i = indmax(areas)
+				list_to_add = filter!(x-> YN_convex[i][1] < x.y[1] < YN_convex[i+1][1], ns)
+				isempty(list_to_add) && break
+				sol_to_add = list_to_add[length(list_to_add)÷2 + 1]
+				insert!(YN_convex, i+1, sol_to_add.y)
+				insert!(XE_convex, i+1, sol_to_add.pheno)
+				diffs = [YN_convex[i] .- YN_convex[i+1] for i = 1:length(YN_convex)-1]
+				areas = abs.(map(prod, diffs))
+			end
+		end
 	end
 
-	resxe = Vector{Int}[]
-	resyn = Tuple{Int,Int}[]
-
 	nbNodesTotal = 0
+	LNGlobal = use_nsga ? LN_NSGA :  NonDomPoints(sense, XE_convex, Tuple.(YN_convex))
+
+	t = toq()
 
 	for i = 1:length(YN_convex)-1
+		
+		t > time_limit && break
+
+		tic()
+		#println("exploring triangle ◬ ($(YN_convex[i]) - $(YN_convex[i+1])) area : $(areas[i])")
 
 		m = copy(vm)
 		LN = NonDomPoints(sense, [XE_convex[i], XE_convex[i+1]], [Tuple(YN_convex[i]), Tuple(YN_convex[i+1])])
-		LNGlobal = use_nsga ? LN_NSGA : LN #for plots
-		
-		if abs(LN.yn[1][1]-LN.yn[end][1]) == 1 || abs(LN.yn[1][2]-LN.yn[end][2]) == 1
-			append!(resxe, LN.xe)
-			append!(resyn, LN.yn)
-			continue
-		end
 
 		if use_nsga
 			for j = 1:length(LN_NSGA.yn)
@@ -79,7 +93,6 @@ function solve_stidsen(model, limit=Inf ;  showplot = false, docovercuts = true 
 			bound2 = LN.yn[end][2] + 1
 			cstr1 = @constraint(m, Ƶ1.aff >= bound1)
 			cstr2 = @constraint(m, Ƶ2.aff >= bound2)
-			# @constraint(m, Ƶ.aff <= LN.λ[1]*LN.yn[1][1] + LN.λ[2]*LN.yn[1][2])
 		else
 			bound1 = LN.yn[end][1] - 1
 			bound2 = LN.yn[1][2] - 1
@@ -90,31 +103,35 @@ function solve_stidsen(model, limit=Inf ;  showplot = false, docovercuts = true 
 		#Stack of nodes to evaluate
 		S = [Node(m, bound1, bound2, cstr1, cstr2)]
 
-		apply_cuts!(S[1], cstrData, lift_covers)
+		if docovercuts
+			apply_cuts!(S[1], cstrData, lift_covers)
+		end
 
-		preprocess!(S[1], LN, Ƶ1, Ƶ2)
+		if preprocess
+			preprocess!(S[1], LN, Ƶ1, Ƶ2)
+		end
 
+
+		t += toq()
 		#Solve while there are nodes to process
 		cpt = 0
-		while !isempty(S) && cpt < limit
-			sort!(S, by = x->x.zparent, rev=(sense==Min))
-			process_node_stidsen(pop!(S), S, sense, LN, Ƶ1, Ƶ2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
+		while !isempty(S) && t < time_limit
+			tic()
+			sort!(S, by = x->x.zparent, rev=(sense==Max))
+			process_node_stidsen(pop!(S), S, sense, LN, Ƶ1, Ƶ2, LNGlobal, cstrData, showplot)
 			nbNodesTotal += 1
 			cpt += 1
+			t+=toq()
 		end
 		
-		cpt == limit && println("node limit reached")
 
-		append!(resxe, LN.xe)
-		append!(resyn, LN.yn)
-
+		for i = 1:length(LN.xe)
+			push!(LNGlobal, LN.xe[i], LN.yn[i])
+		end
+	
 	end
 
-	resxe = unique(resxe)
-	YN = [(evaluate(x, vd.objs[1]), evaluate(x, vd.objs[2])) for x in resxe]
-
-	# @show cpt
-	return @NT(YN = YN, XE = resxe, nodes = nbNodesTotal)
+	return @NT(YN = LNGlobal.yn	, XE = LNGlobal.xe, nodes = nbNodesTotal, timeout = t > time_limit)
 end
 
 function setRHS!(n::Union{Node, NodeParragh})
@@ -140,7 +157,7 @@ function unfix_variables!(n::Union{Node, NodeParragh})
 	end
 end
 
-function apply_cuts!(n::Node, cstrData, lift_covers, nb_try = 15)
+function apply_cuts!(n::Node, cstrData, lift_covers, nb_try = 20)
 	for i = 1:nb_try
 		res = @suppress solve(n.m, ignore_solve_hook=true, relaxation=true)
 		res != :Optimal && return
@@ -152,26 +169,26 @@ function apply_cuts!(n::Node, cstrData, lift_covers, nb_try = 15)
 	return
 end
 
-function preprocess!(n::Node, LN, obj1, obj2)
+function preprocess!(n, LN, obj1, obj2)
 	for i = 1:n.m.numCols
 		setlowerbound(JuMP.Variable(n.m, i), 1.)
 		res = solve(n.m, ignore_solve_hook=true, relaxation=true, suppress_warnings=true)
-		n.x = round.(n.m.colVal, 8)
-		n.z = round(getobjectivevalue(n.m), 8)
-		z1, z2 = evaluate(n.x, obj1), evaluate(n.x, obj2)
+		x = round.(n.m.colVal, 8)
+		z = round(getobjectivevalue(n.m), 8)
+		z1, z2 = evaluate(x, obj1), evaluate(x, obj2)
 		setlowerbound(JuMP.Variable(n.m, i), 0.)
 		setupperbound(JuMP.Variable(n.m, i), 0.)
-		if isfathomable(n.z, LN)
-			println("fixed variable $i to 0")
+		if isfathomable(z, LN) || res != :Optimal
+			# println("fixed variable $i to 0")
 			push!(n.f0, i)
 		else
 			res = solve(n.m, ignore_solve_hook=true, relaxation=true, suppress_warnings=true)
-			n.x = round.(n.m.colVal, 8)
-			n.z = round(getobjectivevalue(n.m), 8)
-			z1, z2 = evaluate(n.x, obj1), evaluate(n.x, obj2)
+			x = round.(n.m.colVal, 8)
+			z = round(getobjectivevalue(n.m), 8)
+			z1, z2 = evaluate(x, obj1), evaluate(x, obj2)
 			setupperbound(JuMP.Variable(n.m, i), 1.)
-			if isfathomable(n.z, LN)
-				println("fixed variable $i to 1")
+			if isfathomable(z, LN) || res != :Optimal 
+				# println("fixed variable $i to 1")
 				setlowerbound(JuMP.Variable(n.m, i), 1.)
 				push!(n.f1, i)
 			else
@@ -180,7 +197,7 @@ function preprocess!(n::Node, LN, obj1, obj2)
 	end
 end
 
-function process_node_stidsen(n::Node, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot, docovercuts, lift_covers)
+function process_node_stidsen(n::Node, S, sense, LN, obj1, obj2, LNGlobal, cstrData, showplot)
 
 	n.zparent != Inf && isfathomable(n.zparent, LN) && return
 
@@ -300,7 +317,7 @@ function paretobranch(sense::Type{Max}, n, z1, z2, LN, obj1, obj2, showplot)
 		# @constraint(n2.m, copy(obj2, n2.m).aff >= boundz2)
 		push!(res, n2)
 	end
-	showplot && plot_pareto_branch(LN, z1, z2, boundz1, boundz2, sleeptime=0.01)
+	showplot && plot_pareto_branch(LN, z1, z2, boundz1, boundz2, sleeptime=0.5)
 	res
 end
 

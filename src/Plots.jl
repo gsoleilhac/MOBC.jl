@@ -16,8 +16,10 @@ function plot_int_found(LN, lnglobal, z1, z2 ; marker = "b.", sleeptime = 0.01)
 	plot([LN.yn[1][1], (WS-λ[2]*LN.yn[end][2])/λ[1]], [(WS-λ[1]*LN.yn[1][1])/λ[2], LN.yn[end][2]], "k--")
 
 	ax = gca()
-    ax[:set_xlim]([-1+min(LN.yn[1][1], z1), 1+max(LN.yn[end][1], z1+1)])
-	ax[:set_ylim]([-1+min(LN.yn[end][2]), 1+max(LN.yn[1][2], z2+1)])
+    # ax[:set_xlim]([-1+min(LN.yn[1][1], z1), 1+max(LN.yn[end][1], z1+1)])
+	# ax[:set_ylim]([-1+min(LN.yn[end][2]), 1+max(LN.yn[1][2], z2+1)])
+	ax[:set_xlim]([LN.yn[1][1] - 1, LN.yn[end][1]+1])
+	ax[:set_ylim]([LN.yn[end][2]-1, LN.yn[1][2] + 1])
 	show()
 
 	# figure(2)

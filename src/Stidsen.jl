@@ -33,9 +33,9 @@ function solve_stidsen(model ; showplot = false, docovercuts = true , global_bra
 		modelnsga.ext[:vOpt].objs = [z1, z2]
 
 		if global_nsga
-			ns = nsga_binary(50, 1000, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
+			ns = nsga_binary(100, 500, modelnsga, seed=XE_convex, pmut=0.3, showprogress=false)
 		else
-			ns = union((nsga_binary(20, 500, modelnsga, seed=[XE_convex[i], XE_convex[i+1]], pmut=0.3, showprogress=false) for i = 1:length(XE_convex)-1)...)
+			ns = union((nsga_binary(50, 500, modelnsga, seed=[XE_convex[i], XE_convex[i+1]], pmut=0.3, showprogress=false) for i = 1:length(XE_convex)-1)...)
 			#if we do one nsga per triangle, we can have dominated solutions here.
 			NSGAII.fast_non_dominated_sort!(ns, sense==Max ? NSGAII.Max() : NSGAII.Min())
 			filter!(x->x.rank == 1, ns)
@@ -103,21 +103,21 @@ function solve_stidsen(model ; showplot = false, docovercuts = true , global_bra
 		#Stack of nodes to evaluate
 		S = [Node(m, bound1, bound2, cstr1, cstr2)]
 
-		if docovercuts
-			apply_cuts!(S[1], cstrData, lift_covers)
-		end
-
+		
 		if preprocess
 			preprocess!(S[1], LN, Ƶ1, Ƶ2)
 		end
-
+		
+		if docovercuts
+			apply_cuts!(S[1], cstrData, lift_covers)
+		end
 
 		t += toq()
 		#Solve while there are nodes to process
 		cpt = 0
 		while !isempty(S) && t < time_limit
 			tic()
-			sort!(S, by = x->x.zparent, rev=(sense==Max))
+			sort!(S, by = x->x.zparent, rev=(sense==Min))
 			process_node_stidsen(pop!(S), S, sense, LN, Ƶ1, Ƶ2, LNGlobal, cstrData, showplot)
 			nbNodesTotal += 1
 			cpt += 1
@@ -157,7 +157,7 @@ function unfix_variables!(n::Union{Node, NodeParragh})
 	end
 end
 
-function apply_cuts!(n::Node, cstrData, lift_covers, nb_try = 20)
+function apply_cuts!(n::Node, cstrData, lift_covers, nb_try = 2)
 	for i = 1:nb_try
 		res = @suppress solve(n.m, ignore_solve_hook=true, relaxation=true)
 		res != :Optimal && return
@@ -166,10 +166,12 @@ function apply_cuts!(n::Node, cstrData, lift_covers, nb_try = 20)
 		success = find_cover_cuts(n, cstrData, lift_covers)
 		!success && return
 	end
+	#println(n.m)
 	return
 end
 
 function preprocess!(n, LN, obj1, obj2)
+	cpt = 0
 	for i = 1:n.m.numCols
 		setlowerbound(JuMP.Variable(n.m, i), 1.)
 		res = solve(n.m, ignore_solve_hook=true, relaxation=true, suppress_warnings=true)
@@ -179,8 +181,9 @@ function preprocess!(n, LN, obj1, obj2)
 		setlowerbound(JuMP.Variable(n.m, i), 0.)
 		setupperbound(JuMP.Variable(n.m, i), 0.)
 		if isfathomable(z, LN) || res != :Optimal
-			# println("fixed variable $i to 0")
+			#println("fixed variable $i to 0 $res, $z    |||   $x")
 			push!(n.f0, i)
+			cpt += 1
 		else
 			res = solve(n.m, ignore_solve_hook=true, relaxation=true, suppress_warnings=true)
 			x = round.(n.m.colVal, 8)
@@ -188,9 +191,10 @@ function preprocess!(n, LN, obj1, obj2)
 			z1, z2 = evaluate(x, obj1), evaluate(x, obj2)
 			setupperbound(JuMP.Variable(n.m, i), 1.)
 			if isfathomable(z, LN) || res != :Optimal 
-				# println("fixed variable $i to 1")
+				#println("fixed variable $i to 1")
 				setlowerbound(JuMP.Variable(n.m, i), 1.)
 				push!(n.f1, i)
+				cpt += 1
 			else
 			end
 		end

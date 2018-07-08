@@ -150,10 +150,12 @@ function groupby_continuous(v)
 	res
 end
 
-function apply_cuts!(n::NodeParragh, cstrData, lift_covers, nb_try = 20)
+function apply_cuts!(n::NodeParragh, cstrData, lift_covers, nb_try = 15)
 	for i = 1:nb_try
 		res = @suppress solve(n.m, method=:dicho, relax=true)
-		res != :Optimal && return
+		if res != :Optimal 
+			return #peut arriver si le triangle ne contient aucune autre solution que ses deux points extremes, qui sont élminés par les deux contraintes sur les objectifs(+1)
+		end
 		n.x = [[round(getvalue(JuMP.Variable(n.m, i), j), 8) for i = 1:n.m.numCols] for j = 1:length(getY_N(n.m))]
 		success = find_cover_cuts(n, cstrData, lift_covers)
 		!success && return
@@ -208,7 +210,7 @@ function solve_parragh(model ;  showplot = false, docovercuts = true, global_bra
 		sort!(ns, by=x->x.y[1])
 		LN_NSGA = NonDomPoints(sense, map(x->x.pheno, ns), map(x->Tuple(x.y), ns))
 		
-		if fill_triangles
+		if fill_triangles && use_nsga
 			diffs = [YN_convex[i] .- YN_convex[i+1] for i = 1:length(YN_convex)-1]
 			areas = abs.(map(prod, diffs))
 			while maximum(areas) > 2*mean(areas)
@@ -234,7 +236,7 @@ function solve_parragh(model ;  showplot = false, docovercuts = true, global_bra
 		t > time_limit && break
 		tic()
 
-		# println("exploring triangle ◬ ($(YN_convex[i]) - $(YN_convex[i+1])) area : $(areas[i])")
+		#println("exploring triangle ◬ ($(YN_convex[i]) - $(YN_convex[i+1])) area : $(areas[i])")
 
 		m = copy(vm)
 		LN = NonDomPoints(sense, [XE_convex[i], XE_convex[i+1]], [Tuple(YN_convex[i]), Tuple(YN_convex[i+1])])
@@ -248,9 +250,7 @@ function solve_parragh(model ;  showplot = false, docovercuts = true, global_bra
 		end
 
 		Ƶ1, Ƶ2 = copy(z1, m), copy(z2, m)
-		Ƶ = LN.λ[1]*Ƶ1 + LN.λ[2]*Ƶ2
-		JuMP.setobjective(m, vd.objSenses[1], Ƶ.aff)
-
+		
 		if sense == Max
 			bound1 = LN.yn[1][1] + 1
 			bound2 = LN.yn[end][2] + 1
@@ -263,15 +263,17 @@ function solve_parragh(model ;  showplot = false, docovercuts = true, global_bra
 			cstr1 = @constraint(m, Ƶ1.aff <= bound1)
 			cstr2 = @constraint(m, Ƶ2.aff <= bound2)
 		end
-
+		
 		#Stack of nodes to evaluate
 		S = [NodeParragh(m, bound1, bound2, cstr1, cstr2)]
 		
 		if docovercuts
 			apply_cuts!(S[1], cstrData, lift_covers)
 		end
-
+		
 		if preprocess
+			Ƶ = LN.λ[1]*Ƶ1 + LN.λ[2]*Ƶ2
+			JuMP.setobjective(m, vd.objSenses[1], Ƶ.aff)
 			preprocess!(S[1], LN, Ƶ1, Ƶ2)
 		end
 		

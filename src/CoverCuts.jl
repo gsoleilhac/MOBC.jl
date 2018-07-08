@@ -88,7 +88,7 @@ function find_cover_cuts(n::Node, cstrData, lift_covers)
         a = cstrData.coeffs[i] #coefficients of the variables in the current constraint
         b = cstrData.ub[i] #RHS of the constraint
         
-        if dot(x, a) > b - 2.5 #if the constraint is activated                
+        if dot(x, a) > b - 0.5 #if the constraint is activated                
             C, card = separateHeur(x, a, b) #try to find a cover
             if !isempty(C) #if success, add it to the list of cover cuts
                 success = true
@@ -119,13 +119,13 @@ function find_cover_cuts(n::NodeParragh, cstrData, lift_covers)
     success = false
     for i = 1:cstrData.nb_cstr
         inds = cstrData.indices[i] #indices of variables involved in the constraint
-        a = cstrData.coeffs[i] #coefficients of thothese variables in the current constraint
+        a = cstrData.coeffs[i] #coefficients of the variables in the current constraint
         b = cstrData.ub[i] #RHS of the constraint
 
         for ind_x in 1:length(n.x) #for each solution of the convex linear relaxation
             x =  view(n.x[ind_x], inds) #value of the variables in the solution
             
-            if dot(x, a) > b - 1e-4 #if the constraint is activated                
+            if dot(x, a) > b - 0.5 #if the constraint is activated                
                 C, card = separateHeur(x, a, b) #try to find a cover
                 if !isempty(C) #if success, add it to the list of cover cuts
                     success = true
@@ -136,7 +136,6 @@ function find_cover_cuts(n::NodeParragh, cstrData, lift_covers)
                         else
                             if lifting_procedure_M2!(C, a, b)
                                 res = lifting_procedure(C, a, b, card)
-                                push!(lifted_cuts, (inds, res, card))
                             else
                                 push!(cuts, (inds[extend(C, a)], card))
                             end

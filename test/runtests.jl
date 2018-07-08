@@ -38,7 +38,9 @@ function hard_instance(solver=CplexSolver(CPX_PARAM_SCRIND = 0))
     m
 end
 
-function benchmark(itemrange, nrange, runpersize ; time_limit=300, args...)
+
+
+function benchmark(itemrange, nrange, runpersize ; time_limit=300, parragh=true, epsilon=true, args...)
 	rng = 0
 	res_stidsen=Dict{Int, Vector{Float64}}() ; nb_nodes_stidsen=Dict{Int, Vector{Int}}()
 	res_parragh=Dict{Int, Vector{Float64}}() ; nb_nodes_parragh=Dict{Int, Vector{Int}}()
@@ -53,14 +55,13 @@ function benchmark(itemrange, nrange, runpersize ; time_limit=300, args...)
 			m_copy = copy(m)
 			status,tEPS,_ = @suppress @timed solve(m_copy, method=:epsilon, round_results=true);
 			valBC, tBC, _ = @timed solve_stidsen(m ; time_limit=time_limit, args...);
-			valPAR, tPAR, _ = @timed solve_parragh(m ; time_limit=time_limit, args...);
+			valPAR, tPAR, _ = 	if parragh
+									@timed solve_parragh(m ; time_limit=time_limit, args...);
+								else
+									valBC, tBC, _
+								end
 			
-
 			if (!(valBC.timeout) && length(getY_N(m_copy)) != length(valBC.YN)) || (!(valPAR.timeout) && length(valPAR.YN) != length(getY_N(m_copy)))
-				print(m)
-				@show valBC.YN
-				@show valPAR.YN
-				@show getY_N(m)
 				figure(3)
 				clf()
 				plot(map(first, valPAR.YN), map(last,valPAR.YN), "b>", markersize="5", label="parragh")
@@ -74,37 +75,104 @@ function benchmark(itemrange, nrange, runpersize ; time_limit=300, args...)
 			!(valPAR.timeout) && push!(nb_nodes_parragh[n], valPAR.nodes)
 			!(valBC.timeout) && push!(nb_nodes_stidsen[n], valBC.nodes)
 
-			figure(1) ; clf()
-			xlabel("n") ; ylabel("t(s)") ; title("time per instance")
-			plot([],[],"gx",markersize=3,label="stidsen") ; plot([],[],"bx",markersize=3,label="parragh") ; plot([],[],"k.",markersize=3,label="epsilon")
-			for k in keys(res_stidsen)
-				plot(fill(k, length(res_stidsen[k])), res_stidsen[k], "gx", markersize=3)
-				plot(fill(k, length(res_stidsen[k])), res_parragh[k], "bx", markersize=3)
-				plot(fill(k, length(res_stidsen[k])), res_eps[k], "k.", markersize=3)
-			end
-			legend()
+			#figure(1) ; clf()
+			#xlabel("n") ; ylabel("t(s)") ; title("time per instance")
+			###parragh || epsilon && plot([],[],"gx",markersize=3,label="λ-scalarisation") 
+			###parragh && plot([],[],"bx",markersize=3,label="parragh")
+			##epsilon && plot([],[],"k.",markersize=3,label="epsilon")
+			#for k in keys(res_stidsen)
+			#	plot(fill(k, length(res_stidsen[k])), res_stidsen[k], "gx", markersize=3)
+				#parragh && plot(fill(k, length(res_stidsen[k])), res_parragh[k], "bx", markersize=3)
+	#		#	epsilon && plot(fill(k, length(res_stidsen[k])), res_eps[k], "k.", markersize=3)
+			#end
+	#		legend()
 
 			figure(2) ; clf()
-			xlabel("n") ; ylabel("#nodes") ; title("average time and #nodes")
+			xlabel("n") ; ylabel("#noeuds") ; title("temps et nombre de noeuds en moyenne")
 			k = sort(collect(keys(res_stidsen)))
 			plot(k, [mean(nb_nodes_stidsen[a]) for a in k], "gs", markersize=3) ; plot(k, [mean(nb_nodes_stidsen[a]) for a in k], "g--", linewidth=1)
-			plot(k, [mean(nb_nodes_parragh[a]) for a in k], "bs", markersize=3) ; plot(k, [mean(nb_nodes_parragh[a]) for a in k], "b--", linewidth=1)
-			twinx() ; ylabel("t(s)")
-			plot([],[],"g--",markersize=3,label="#nodes stidsen") #labels dont work after twinx(), had to put a dummy plot 
-			plot([],[],"b--",markersize=3,label="#nodes parragh")
-			plot(k, [mean(res_stidsen[a]) for a in k], "gx", markersize=3) ; plot(k, [mean(res_stidsen[a]) for a in k], "g-", linewidth=1, label="tmoy stidsen")
-			plot(k, [mean(res_parragh[a]) for a in k], "bx", markersize=3) ; plot(k, [mean(res_parragh[a]) for a in k], "b-", linewidth=1, label="tmoy parragh")
-			plot(k, [mean(res_eps[a])for a in k], "k-", linewidth=1, label="tmoy epsilon")
+			if parragh
+				plot(k, [mean(nb_nodes_parragh[a]) for a in k], "bs", markersize=3) ; plot(k, [mean(nb_nodes_parragh[a]) for a in k], "b--", linewidth=1)
+			end
+			twinx() ; ylabel("temps moyen (s)")
+			plot([],[],"g--",markersize=3,label="#noeuds λ-scalarisation") #labels dont work after twinx(), had to put a dummy plot 
+			parragh && plot([],[],"b--",markersize=3,label="#noeuds parragh")
+			plot(k, [mean(res_stidsen[a]) for a in k], "gx", markersize=3) ; plot(k, [mean(res_stidsen[a]) for a in k], "g-", linewidth=1, label="tmoy λ-scalarisation")
+			if parragh 
+				plot(k, [mean(res_parragh[a]) for a in k], "bx", markersize=3) ; plot(k, [mean(res_parragh[a]) for a in k], "b-", linewidth=1, label="tmoy parragh")
+			end
+			if epsilon
+				plot(k, [mean(res_eps[a])for a in k], "k-", linewidth=1, label="tmoy epsilon")
+			end
 			legend()
 		end
 		println("\n####################################\nn = $n")
-		println("tmoy eps : $(mean(res_eps[n]))") ; println("tmoy stidsen : $(mean(res_stidsen[n]))") ; println("tmoy parragh : $(mean(res_parragh[n]))")
-		println("moy : $(round(mean(nb_nodes_stidsen[n]),1)) noeuds par BC Stidsen") ; println("moy : $(round(mean(nb_nodes_parragh[n]),1)) noeuds par BC Parragh")
+		println("tmoy eps : $(mean(res_eps[n]))") ; println("tmoy stidsen : $(mean(res_stidsen[n]))") ; parragh && println("tmoy parragh : $(mean(res_parragh[n]))")
+		println("moy : $(round(mean(nb_nodes_stidsen[n]),1)) noeuds par BC Stidsen") ; parragh && println("moy : $(round(mean(nb_nodes_parragh[n]),1)) noeuds par BC Parragh")
 	end
 	res_stidsen, res_parragh, res_eps, nb_nodes_stidsen, nb_nodes_parragh
+end
+
+
+
+
+
+function benchmark_stidsen(itemrange, nrange, runpersize ; time_limit=300,  epsilon=true)
+	rng = 0
+	config_1 = "avec cover cuts"
+	config_2 = "sans cover cuts"
+	res_1=Dict{Int, Vector{Float64}}() ; nb_nodes_1=Dict{Int, Vector{Int}}()
+	res_2=Dict{Int, Vector{Float64}}() ; nb_nodes_2=Dict{Int, Vector{Int}}()
+	res_eps=Dict{Int, Vector{Float64}}()
+	for n in nrange
+		res_1[n]=Float64[] ; res_2[n]=Float64[] ; res_eps[n]=Float64[]
+		nb_nodes_1[n]=Int[] ; nb_nodes_2[n]=Int[]
+		for i = 1:runpersize
+			m = random_instance(itemrange, n, rng)
+			rng += 1
+			global m_current = m
+			m_copy = copy(m)
+			status,tEPS,_ = @suppress @timed solve(m_copy, method=:epsilon, round_results=true);
+			val2, t2, _ = @timed solve_stidsen(m ; time_limit=time_limit, docovercuts=false, lift_covers=false, use_nsga=false, global_nsga=false, global_branch=false, preprocess=false, fill_triangles=false);
+			val1, t1, _ = @timed solve_stidsen(m ; time_limit=time_limit, docovercuts=true, lift_covers=true, use_nsga=false, global_nsga=false, global_branch=false, preprocess=false, fill_triangles=false);
+
+			if (!(val1.timeout) && !(val2.timeout) && length(val1.YN) != length(val2.YN)) 
+				figure(3)
+				clf()
+				plot(map(first, val1.YN), map(last,val1.YN), "b>", markersize="5", label=config_1)
+				plot(map(first, val1.YN), map(last, val1.YN), "r<", markersize="5", label=config_2)
+				plot(map(first, getY_N(m)), map(last, getY_N(m)), "go", markersize="2", label="epsilon")
+				legend()
+				error()
+			end
+			
+			push!(res_1[n], val1.timeout ? time_limit : t1) ; push!(res_2[n], val2.timeout ? time_limit : t2) ; push!(res_eps[n], tEPS)
+			!(val1.timeout) && push!(nb_nodes_1[n], val1.nodes)
+			!(val2.timeout) && push!(nb_nodes_2[n], val2.nodes)
+
+			figure(1) ; clf()
+			xlabel("n") ; ylabel("#noeuds") ; title("temps et nombre de noeuds en moyenne")
+			k = sort(collect(keys(res_1)))
+			plot(k, [mean(nb_nodes_1[a]) for a in k], "gs", markersize=3) ; plot(k, [mean(nb_nodes_1[a]) for a in k], "g--", linewidth=1)
+			plot(k, [mean(nb_nodes_2[a]) for a in k], "bs", markersize=3) ; plot(k, [mean(nb_nodes_2[a]) for a in k], "b--", linewidth=1)
+
+			twinx() ; ylabel("temps moyen (s)")
+			plot([],[],"g--",markersize=3,label="#noeuds $config_1") #labels dont work after twinx(), had to put a dummy plot 
+			plot([],[],"b--",markersize=3,label="#noeuds $config_2")
+			plot(k, [mean(res_1[a]) for a in k], "gx", markersize=3) ; plot(k, [mean(res_1[a]) for a in k], "g-", linewidth=1, label="tmoy $config_1")
+			plot(k, [mean(res_2[a]) for a in k], "gx", markersize=3) ; plot(k, [mean(res_2[a]) for a in k], "b-", linewidth=1, label="tmoy $config_2")
+			if epsilon
+				plot(k, [mean(res_eps[a])for a in k], "k-", linewidth=1, label="tmoy epsilon")
+			end
+			legend()
+		end
+		println("\n####################################\nn = $n")
+		println("tmoy eps : $(mean(res_eps[n]))") ; println("tmoy $config_1 : $(mean(res_1[n]))") ; println("tmoy $config_2 : $(mean(res_2[n]))")
+		println("moy : $(round(mean(nb_nodes_1[n]),1)) noeuds $config_1") ; println("moy : $(round(mean(nb_nodes_2[n]),1)) noeuds $config_2")
+	end
 end
 
 benchmark(1:20, 10:11, 1, use_nsga=true, global_branch=false, docovercuts=true, lift_covers=true)
 # inst = hard_instance2(CplexSolver(CPX_PARAM_SCRIND = 0))
 srand(0)
-benchmark(1:20, 10:5:100, 5, use_nsga=true, global_branch=false, docovercuts=true, lift_covers=true, time_limit=300)
+benchmark(1:20, 10:5:60, 10, use_nsga=true, global_branch=false, docovercuts=true, lift_covers=true, time_limit=30, parragh=false)
